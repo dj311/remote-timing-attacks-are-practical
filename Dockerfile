@@ -12,15 +12,17 @@ RUN mkdir /project
 RUN ln -fs /bin/bash /bin/sh \
     && dpkg-reconfigure -f noninteractive dash
 
+# Download, install and compile OpenSSL 0.9.7
 RUN cd /tmp \
     && wget https://www.openssl.org/source/old/0.9.x/openssl-0.9.7.tar.gz \
     && tar --extract --auto-compress -f openssl-0.9.7.tar.gz \
     && cd openssl-0.9.7 \
     && sh ./config \
     && make
+# but don't install it yet, mod_ssl will do that later.
 
-# don't install openssl yet, let mod_ssl do that later
-
+# Download and patch an appropriate version of Apache for our OpenSSL (version
+# 1.3.27 since it's the first 64-bit release after OpenSSL 0.9.7 was released).
 COPY apache-modperl-patch /tmp/
 RUN cd /tmp \
     && wget https://archive.apache.org/dist/httpd/binaries/linux/apache_1.3.27-x86_64-whatever-linux22.tar.gz \
@@ -33,11 +35,18 @@ RUN cd /tmp \
     && sed -i 's/getline/apache_getline/' src/support/htpasswd.c \
     && sed -i 's/getline/apache_getline/' src/support/logresolve.c
 
-# don't make or apache yet, we do that as part of mod_ssl installation later
-# e.g. mod_ssl patches the apache source
+# But don't compile Apache yet, mod_ssl needs to add its own patches before we
+# compile it.
 
+# Pull in the pre-built SSL certificates from project repo.
 COPY ssl-certificate /root/ssl-cert
 
+# Download an appropriate version of mod_ssl. This one was chosen because:
+#   - It is aimed at our specific version of Apache
+#   - Expects OpenSSL and not its predecessor, SSLeay.
+# Once downloaded, we tell it to configure and patch Apache as needed. We then
+# run the install process, making sure to copy over our pre-build SSL certs
+# into its conf directory.
 RUN cd /tmp \
     && wget www.modssl.org/source/OBSOLETE/mod_ssl-2.8.14-1.3.27.tar.gz \
     && tar --extract --auto-compress -f mod_ssl-2.8.14-1.3.27.tar.gz \
