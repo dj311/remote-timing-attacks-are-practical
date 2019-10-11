@@ -5,3 +5,4 @@ perl6
 gzip
 flex
 curl
+vim
