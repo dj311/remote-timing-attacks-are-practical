@@ -1,0 +1,14 @@
+--- /project/apache_1.3.27/src/os/unix/os.h	2002-03-13 21:05:36.000000000 +0000
++++ /project/apache_1.3.27/src/os/unix/os.new.h	2019-10-11 14:56:34.708839782 +0000
+@@ -75,7 +75,11 @@
+ /* Compiler supports inline, so include the inlineable functions as
+  * part of the header
+  */
++#ifdef __GNUC_STDC_INLINE__
++#define INLINE extern ap_inline __attribute__((gnu_inline))
++#else
+ #define INLINE extern ap_inline
++#endif
+ 
+ INLINE int ap_os_is_path_absolute(const char *file);
+ 

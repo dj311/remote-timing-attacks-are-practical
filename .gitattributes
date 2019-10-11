@@ -1,0 +1,4 @@
+./clients/measurements/* filter=lfs diff=lfs merge=lfs -text
+./client/measurements/* filter=lfs diff=lfs merge=lfs -text
+client/measurements/* filter=lfs diff=lfs merge=lfs -text
+* !text !filter !merge !diff
