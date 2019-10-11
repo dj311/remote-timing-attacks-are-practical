@@ -59,4 +59,5 @@ RUN cd /tmp/apache_1.3.27 \
     && make install
 
 # Start it up
-ENTRYPOINT /usr/local/apache/bin/apachectl startssl && /bin/bash
+ENTRYPOINT /usr/local/apache/bin/apachectl startssl \
+           && tail -f /usr/local/apache/logs/*_log
