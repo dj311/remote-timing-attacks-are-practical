@@ -57,3 +57,6 @@ RUN cd /tmp \
     # copy results from previous `make certificate` call
     && cp -r /root/ssl-cert/* ./conf  \
     && make install
+
+# Start it up
+ENTRYPOINT /usr/local/apache/bin/apachectl startssl && /bin/bash
