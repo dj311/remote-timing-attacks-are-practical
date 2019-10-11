@@ -44,17 +44,17 @@ COPY ssl-certificate /root/ssl-cert
 # Download an appropriate version of mod_ssl. This one was chosen because:
 #   - It is aimed at our specific version of Apache
 #   - Expects OpenSSL and not its predecessor, SSLeay.
-# Once downloaded, we tell it to configure and patch Apache as needed. We then
-# run the install process, making sure to copy over our pre-build SSL certs
-# into its conf directory.
 RUN cd /tmp \
     && wget www.modssl.org/source/OBSOLETE/mod_ssl-2.8.14-1.3.27.tar.gz \
     && tar --extract --auto-compress -f mod_ssl-2.8.14-1.3.27.tar.gz \
     && cd mod_ssl-2.8.14-1.3.27 \
-    && bash ./configure --with-apache=../apache_1.3.27 --with-ssl=../openssl-0.9.7 --prefix=/usr/local/apache \
-    && cd ../apache_1.3.27 \
+    && bash ./configure --with-apache=../apache_1.3.27 --with-ssl=../openssl-0.9.7 --prefix=/usr/local/apache
+
+# Once downloaded, we tell mod_sll to configure and patch Apache as
+# needed. We then compile and install our patched Apache, making sure
+# to copy over our pre-built SSL certs into its conf directory.
+RUN cd /tmp/apache_1.3.27 \
     && make \
-    # copy results from previous `make certificate` call
     && cp -r /root/ssl-cert/* ./conf  \
     && make install
 
