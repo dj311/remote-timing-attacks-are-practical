@@ -1,9 +1,10 @@
 FROM ubuntu:rolling
 
+# ubuntu-dependencies.txt is just a list of packages we want
+# installed. These are mostly prerequisites for compiling and
+# installing OpenSSL + Apache + mod_ssl.
 COPY ubuntu-dependencies.txt /tmp/
 RUN apt-get update && xargs -a /tmp/ubuntu-dependencies.txt apt-get install -y
-
-RUN mkdir /project
 
 # We need default sh to be bash for some configure scripts to work correctly
 # we could just run "bash ./configure ..." but the mod_ssl configure script
@@ -60,4 +61,7 @@ RUN cd /tmp/apache_1.3.27 \
 
 # Start it up
 ENTRYPOINT /usr/local/apache/bin/apachectl startssl \
-           && tail -f /usr/local/apache/logs/*_log
+           && echo "tail -f /usr/local/apache/logs/*_log" | /bin/bash
+
+# Dodgy echo | bash above allows us to Ctrl+C out of the container
+# (but running tail directly does not).
