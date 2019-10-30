@@ -1,2 +1,3 @@
 black==19.3b0
 tlslite-ng==0.7.5
+rdtsc==0.2.1
