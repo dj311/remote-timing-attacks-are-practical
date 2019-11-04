@@ -1,14 +1,10 @@
 FROM ubuntu:rolling
 
-# ubuntu-dependencies.txt is just a list of packages we want
-# installed. Shared between server and client.
 COPY ubuntu-dependencies.txt /tmp/
 RUN apt-get update && xargs -a /tmp/ubuntu-dependencies.txt apt-get install -y
 
 COPY attack-requirements.txt /tmp/
 RUN python3 -m pip install -r /tmp/attack-requirements.txt
 
-
-# Start it up
-COPY attack.py /
-ENTRYPOINT ["python3", "/attack.py"]
+COPY . /project
+ENTRYPOINT ["python3", "/project/attack.py"]
