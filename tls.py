@@ -4,76 +4,10 @@ import secrets
 import socket
 
 from collections import namedtuple
+from tlslite.x509 import X509
 
 from ctypes import *
 from tlslite.constants import *
-
-
-class EasyStructure(BigEndianStructure):
-    """
-    ctypes.Structure which takes in bytes/bytearray objects and
-    automatically converts them to the requisite type automatically.
-    """
-
-    def __init__(self, *args, **kwargs):
-        args = [
-            self.convert(value, field_index=index) for index, value in enumerate(args)
-        ]
-        kwargs = {
-            name: self.convert(value, field_name=name) for name, value in kwargs.items()
-        }
-        return super().__init__(*args, **kwargs)
-
-    def convert(self, value, field_index=None, field_name=None):
-        if field_name is not None:
-            [field] = [field for field in self._fields_ if field[0] == field_name]
-        elif field_index is not None:
-            field = self._fields_[field_index]
-        else:
-            return value
-
-        field_type = field[1]
-
-        if type(value) == bytearray:
-            return field_type.from_buffer(value)
-        elif type(value) == bytes:
-            return field_type.from_buffer_copy(value)
-        elif (  # int -> c_uint8/c_ubyte array
-            type(value) == int
-            and field_type._type_ in (c_uint8, c_ubyte)
-            and field_type._length_ > 1
-        ):
-            bs = value.to_bytes(length=field_type._length_, byteorder="big")
-            return field_type.from_buffer_copy(bs)
-        elif type(value) == field_type:
-            return value
-        else:
-            return value
-
-
-class TLSMessage(EasyStructure):
-    _fields_ = [("header", TLSHeader), ("contents", TLSContents)]
-
-
-class TLSHeader(EasyStructure):
-    _fields_ = [
-        ("content_type", c_uint8),
-        ("version", 2 * c_uint8),
-        ("length", 2 * c_uint8),
-    ]
-
-
-class TLSContents(EasyStructure):
-    pass
-
-
-class TLSHandshake(TLSContents):
-    _fields_ = [("header", TLSHandshakeHeader), ("contents", TLSHandshakeContents)]
-
-
-class TLSAlert(TLSContents):
-    content_type = ContentType.alert
-    _fields_ = [("level", c_uint8), ("description", c_uint8)]
 
 
 class TLSExtensionCertificateType(EasyStructure):
@@ -116,31 +50,6 @@ class TLSHandshakeClientHello(TLSHandshakeContents):
         kwargs["compression_methods_length"] = 1
         kwargs["compression_methods"] = 0
         kwargs["extensions_length"] = 6
-
-        return super().__init__(*args, **kwargs)
-
-
-class TLSHandshakeServerHello(TLSHandshakeContents):
-    content_type = ContentType.handshake
-    handshake_type = HandshakeType.server_hello
-    _fields_ = [
-        ("version", 2 * c_uint8),
-        ("random_timestamp", 4 * c_uint8),
-        ("random_bytes", 28 * c_ubyte),
-        # Server sends 32 byte session id
-        ("session_id_length", 1 * c_uint8),  # == 32
-        ("session_id", 32 * c_uint8),
-        ("cipher_suite", 2 * c_uint8),  # == TLS_RSA_WITH_AES_256_CBC_SHA == 0x0035
-        # Only allow one compression method: null
-        ("compression_methods_length", 1 * c_uint8),  # == 1
-        ("compression_methods", 1 * c_uint8),  # == null == 0x00
-    ]
-
-    def __init__(self, *args, **kwargs):
-        # Force constant values
-        kwargs["session_id_length"] = 32
-        kwargs["compression_methods_length"] = 1
-        kwargs["compression_methods"] = 0
 
         return super().__init__(*args, **kwargs)
 
@@ -247,6 +156,14 @@ def create_tls_handshake(handshake_message):
     )
 
 
+HELLO_CIPHER_SUITE_SIZE = 2
+HELLO_CIPHER_SUITE_LENGTH_SIZE = 2
+HELLO_COMPRESSION_METHOD_SIZE = 1
+HELLO_COMPRESSION_METHOD_LENGTH_SIZE = 1
+HELLO_EXTENSION_SIZE = 6
+HELLO_EXTENSION_LENGTH_SIZE = 2
+
+
 def recvall(sock):
     all_data = []
 
@@ -263,6 +180,207 @@ def recvall(sock):
 
     finally:
         return b"".join(all_data)
+
+
+def encode_list_to_bytes(items, item_size, length_size):
+    length = len(items) * item_size
+    raw_length = length.to_bytes(length_size, byteorder="big")
+    raw_items = b"".join([item.to_bytes(item_size, byteorder="big") for item in items])
+    return raw_length + raw_items
+
+
+def decode_list_from_bytes(raw, item_size, length_size):
+    length = int.from_bytes(raw[0:length_size], byteorder="big")
+    start = length_size
+    items = [
+        int.from_bytes(raw[start : start + item_size], byteorder="big")
+        for i in range(start, start + length, item_size)
+    ]
+    return items, length
+
+
+class Alert(namedtuple("Alert", ["level", "description"])):
+    def to_bytes(self):
+        raw_level = self.level.to_bytes(1, byteorder="big")
+        raw_description = self.description.to_bytes(1, byteorder="big")
+
+        return raw_level + raw_description
+
+    @classmethod
+    def from_bytes(cls, raw):
+        level = int.from_bytes(raw_header[0], byteorder="big")
+        description = int.from_bytes(raw_header[1], byteorder="big")
+
+        return cls(level, description), b""
+
+
+class ServerHelloDone(namedtuple("ServerHelloDone", [])):
+    def to_bytes(self):
+        return b""
+
+    @classmethod
+    def from_bytes(cls, raw):
+        return cls(), b""
+
+
+class Certificate(namedtuple("Certificate", ["certificates"])):
+    @classmethod
+    def from_bytes(cls, raw):
+        length = int.from_bytes(raw[0:3], byteorder="big")
+
+        certs_start = 3
+        certs_end = 3 + length
+
+        certs = []
+
+        offset = certs_start
+        while offset < certs_end:
+            cert_length = int.from_bytes(raw[offset : offset + 3], byteorder="big")
+            offset += 3
+
+            raw_cert = bytes(raw[offset : offset + cert_length])
+            offset += cert_length
+
+            cert = tlslite.x509.X509()
+            cert.parseBinary(raw_cert)
+
+            certs.append(cert)
+
+        return cls(certs), b""
+
+
+class ServerHello(
+    namedtuple(
+        "ServerHello",
+        [
+            "version",
+            "timestamp",
+            "random_bytes",
+            "session_id",
+            "cipher_suite",
+            "compression_method",
+        ],
+    )
+):
+    @classmethod
+    def from_bytes(cls, raw):
+        offset = 0
+
+        version = int.from_bytes(raw[0:2], byteorder="big")
+        offset += 2
+
+        timestamp = int.from_bytes(raw[offset : offset + 4], byteorder="big")
+        offset += 4
+
+        random = bytes(raw[offset : offset + 28])
+        offset += 28
+
+        session_id_length = int.from_bytes(raw[offset : offset + 1], byteorder="big")
+        offset += 1
+
+        session_id = bytes(raw[offset : offset + session_id_length])
+        offset += session_id_length
+
+        cipher_suite = int.from_bytes(
+            raw[offset : offset + HELLO_CIPHER_SUITE_SIZE], byteorder="big"
+        )
+        offset += HELLO_CIPHER_SUITE_SIZE
+
+        compression_method = int.from_bytes(
+            raw[offset : offset + HELLO_COMPRESSION_METHOD_SIZE], byteorder="big"
+        )
+        offset += HELLO_COMPRESSION_METHOD_SIZE
+
+        return (
+            cls(
+                version, timestamp, random, session_id, cipher_suite, compression_method
+            ),
+            b"",
+        )
+
+
+class ClientHello(
+    namedtuple(
+        "ClientHello",
+        [
+            "version",
+            "timestamp",
+            "random_bytes",
+            "session_id",
+            "cipher_suites",
+            "compression_methods",
+            "extensions",
+        ],
+    )
+):
+    def to_bytes(self):
+        raw_version = self.version.to_bytes(2, byteorder="big")
+
+        raw_timestamp = self.timestamp.to_bytes(4, byteorder="big")
+        raw_random = self.random_bytes
+
+        session_id_length = len(self.session_id)
+        raw_session_id_length = session_id_length.to_bytes(1, byteorder="big")
+        raw_session_id = self.session_id
+
+        raw_cipher_suites = self.encode_list_to_bytes(
+            self.cipher_suites, HELLO_CIPHER_SUITE_SIZE, HELLO_CIPHER_SUITE_LENGTH_SIZE
+        )
+        raw_compression_methods = self.encode_list_to_bytes(
+            self.compression_methods,
+            HELLO_COMPRESSION_METHOD_SIZE,
+            HELLO_COMPRESSION_METHOD_LENGTH_SIZE,
+        )
+        raw_extensions = self.encode_list_to_bytes(
+            self.extensions, HELLO_EXTENSION_SIZE, HELLO_EXTENSION_LENGTH_SIZE
+        )
+
+        return b"".join(
+            [
+                raw_version,
+                raw_timestamp,
+                raw_random,
+                raw_cipher_suites,
+                raw_compression_methods,
+                raw_extensions,
+            ]
+        )
+
+
+class HandshakeHeader(namedtuple("HandshakeHeader", ["handshake_type", "length"])):
+    def to_bytes(self):
+        raw_type = self.handshake_type.to_bytes(1, byteorder="big")
+        raw_length = self.length.to_bytes(3, byteorder="big")
+
+        return raw_type + raw_length
+
+    @classmethod
+    def from_bytes(cls, raw_header):
+        handshake_type = raw_header[0].from_bytes(byteorder="big")
+        length = raw_header[1:4].from_bytes(byteorder="big")
+
+        return cls(handshake_type, length), b""
+
+
+class Handshake(namedtuple("Handshake", ["header", "body"])):
+    def to_bytes(self):
+        raw_header = self.header.to_bytes()
+        raw_message = self.message.to_bytes()
+
+        return raw_header + raw_message
+
+    @classmethod
+    def from_bytes(cls, raw_handshake):
+        header, raw_body = HandshakeHeader.from_bytes(raw_handshake)
+
+        body = {
+            HandshakeType.client_hello: ClientHello,
+            HandshakeType.server_hello: ServerHello,
+            HandshakeType.server_hello_done: ServerHelloDone,
+            HandshakeType.certificate: Certificate,
+        }[header.handshake_type].from_bytes(raw_body[0 : header.length])
+
+        return cls(header, body), b""
 
 
 class TLSHeader(namedtuple("TLSHeader", ["content_type", "version", "length"])):
@@ -303,110 +421,6 @@ class TLSRecord(namedtuple("TLSRecord", ["header", "body"])):
         leftovers = raw_body[header.length :]
 
         return cls(header, body), leftovers
-
-
-class HandshakeHeader(namedtuple("HandshakeHeader", ["handshake_type", "length"])):
-    def to_bytes(self):
-        raw_type = self.handshake_type.to_bytes(1, byteorder="big")
-        raw_length = self.length.to_bytes(3, byteorder="big")
-
-        return raw_type + raw_length
-
-    @classmethod
-    def from_bytes(cls, raw_header):
-        handshake_type = raw_header[0].from_bytes(byteorder="big")
-        length = raw_header[1:4].from_bytes(byteorder="big")
-
-        return cls(handshake_type, length), b""
-
-
-class Handshake(namedtuple("Handshake", ["header", "body"])):
-    def to_bytes(self):
-        raw_header = self.header.to_bytes()
-        raw_message = self.message.to_bytes()
-
-        return raw_header + raw_message
-
-    @classmethod
-    def from_bytes(cls, raw_handshake):
-        header, raw_body = HandshakeHeader.from_bytes(raw_handshake)
-
-        body = {
-            HandshakeType.client_hello: ClientHello,
-            HandshakeType.server_hello: ServerHello,
-            HandshakeType.server_hello_done: ServerHelloDone,
-            HandshakeType.certificate: Certificate,
-        }[header.handshake_type].from_bytes(raw_body[0 : header.length])
-
-        return cls(header, body), b""
-
-
-class ClientHello(
-    namedtuple(
-        "ClientHello",
-        [
-            "version",
-            "timestamp",
-            "random_bytes",
-            "session_id",
-            "cipher_suites",
-            "compression_methods",
-            "extensions",
-        ],
-    )
-):
-    @staticmethod
-    def encode_list_to_bytes(items, item_size, num_length_bytes):
-        length = len(items) * item_size
-        raw_length = length.to_bytes(num_length_bytes, byteorder="big")
-        raw_items = b"".join(
-            [item.to_bytes(item_size, byteorder="big") for item in items]
-        )
-        return raw_length + raw_items
-
-    def to_bytes(self):
-        raw_version = self.version.to_bytes(2, byteorder="big")
-
-        raw_timestamp = self.timestamp.to_bytes(4, byteorder="big")
-        raw_random = self.random_bytes
-
-        session_id_length = len(self.session_id)
-        raw_session_id_length = session_id_length.to_bytes(1, byteorder="big")
-        raw_session_id = self.session_id
-
-        raw_cipher_suites = self.encode_list_to_bytes(
-            self.cipher_suites, item_size=2, num_length_bytes=2
-        )
-        raw_compression_methods = self.encode_list_to_bytes(
-            self.compression_methods, item_size=1, num_length_bytes=1
-        )
-        raw_extensions = self.encode_list_to_bytes(
-            self.extensions, item_size=6, num_length_bytes=2
-        )
-
-        return b"".join(
-            [
-                raw_version,
-                raw_timestamp,
-                raw_random,
-                raw_cipher_suites,
-                raw_compression_methods,
-                raw_extensions,
-            ]
-        )
-
-    @classmethod
-    def from_bytes(cls, raw_client_hello):
-        header, raw_body = HandshakeHeader.from_bytes(raw_handshake)
-
-        body = {
-            HandshakeType.client_hello: ClientHello,
-            HandshakeType.server_hello: ServerHello,
-            HandshakeType.server_hello_done: ServerHelloDone,
-            HandshakeType.certificate: Certificate,
-        }[header.handshake_type].from_bytes(raw_body[0 : header.length])
-
-        return cls(header, body), b""
 
 
 if __name__ == "__main__":
