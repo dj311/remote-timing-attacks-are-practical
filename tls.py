@@ -2,6 +2,7 @@ import code
 import io
 import secrets
 import socket
+import rdtsc
 
 from collections import namedtuple
 from tlslite.x509 import X509
@@ -10,151 +11,12 @@ from ctypes import *
 from tlslite.constants import *
 
 
-class TLSExtensionCertificateType(EasyStructure):
-    _fields_ = [
-        ("type", 2 * c_ubyte),
-        ("length", 2 * c_uint8),
-        ("type_list_length", c_uint8),
-        ("type_list", c_ubyte),
-    ]
+TLS_VERSION_1_0 = 769
 
-
-class TLSHandshakeHeader(EasyStructure):
-    _fields_ = [("handshake_type", c_uint8), ("length", 3 * c_uint8)]
-
-
-class TLSHandshakeClientHello(TLSHandshakeContents):
-    content_type = ContentType.handshake
-    handshake_type = HandshakeType.client_hello
-    _fields_ = [
-        ("version", 2 * c_uint8),
-        ("timestamp", 4 * c_uint8),
-        ("random_bytes", 28 * c_ubyte),
-        # Doesn't support session ids:
-        ("session_id_length", c_uint8),  # == 0
-        # Only allow 1 cipher suite, so next field is 2 bytes
-        ("cipher_suites_length", 2 * c_uint8),  # == 2
-        ("cipher_suites", 2 * c_uint8),
-        # Only allow one compression method: null
-        ("compression_methods_length", c_uint8),  # == 1
-        ("compression_methods", c_uint8),  # == null == 0x00
-        # Copy and paste these bytes from a pcap
-        ("extensions_length", 2 * c_uint8),  # == 6
-        ("extensions", TLSExtensionCertificateType),
-    ]
-
-    def __init__(self, *args, **kwargs):
-        # Force constant values
-        kwargs["session_id_length"] = 0
-        kwargs["cipher_suites_length"] = 2
-        kwargs["compression_methods_length"] = 1
-        kwargs["compression_methods"] = 0
-        kwargs["extensions_length"] = 6
-
-        return super().__init__(*args, **kwargs)
-
-
-class TLSHandshakeCertificate(TLSHandshakeContents):
-    content_type = ContentType.handshake
-    handshake_type = HandshakeType.certificate
-
-    @classmethod
-    def from_cert(cls, cert_bytes):
-        length = len(cert_bytes)
-
-        class TLSHandshakeCertificateFromBytes(cls):
-            _fields_ = [("length", 2 * c_uint8), ("certificate", length * c_ubyte)]
-
-        return TLSHandshakeCertificateFromBytes(length=length, certificate=cert_bytes)
-
-
-class TLSHandshakeServerHelloDone(TLSHandshakeContents):
-    content_type = ContentType.handshake
-    handshake_type = HandshakeType.server_hello_done
-
-    _fields_ = [
-        # Empty, only need handshake header
-    ]
-
-
-class TLSHandshakeClientKeyExchange(TLSHandshakeContents):
-    content_type = ContentType.handshake
-    handshake_type = HandshakeType.client_key_exchange
-
-    @classmethod
-    def from_bytes(encrypted_premaster_secret):
-        length = len(encrypted_premaster_secret)
-
-        class TLSHandshakeClientKeyExchangeFromBytes(TLSHandshakeClientKeyExchange):
-            _fields_ = [
-                ("length", 2 * c_uint8),
-                ("enc_premaster_secret", length * c_ubyte),
-            ]
-
-        return TLSHandshakeClientKeyExchangeFromBytes(
-            length=length, enc_premaster_secret=encrypted_premaster_secret
-        )
-
-
-class TLSHandshakeChangeCipherSpec(TLSHandshakeContents):
-    content_type = ContentType.change_cipher_spec
-    _fields_ = [("message_type", c_ubyte)]
-
-    def __init__(self, *args, **kwargs):
-        kwargs["message_type"] = 0x01
-        return super().__init__(*args, **kwargs)
-
-
-class TLSHandshakeEncryptedMessage(TLSHandshakeContents):
-    content_type = ContentType.handshake
-
-    @classmethod
-    def from_bytes(encrypted_message):
-        length = len(encrypted_message)
-
-        class TLSHandshakeEncryptedMessageFromBytes(TLSHandshakeEncryptedMessage):
-            _fields_ = [("enc_message", length * c_ubyte)]
-
-        return TLSHandshakeEncryptedMessageFromBytes(
-            length=length, enc_message=encrypted_message
-        )
-
-
-def create_tls_alert(alert_message):
-    raw_alert_message = bytes(alert_message)
-    message_length = len(raw_alert_message)
-
-    tls_header = TLSHeader(
-        content_type=ContentType.alert, version=0x0303, length=message_length
-    )
-    raw_tls_header = bytes(tls_header)
-    header_length = len(raw_tls_header)
-
-    return create_string_buffer(raw_tls_header + raw_alert_message)
-
-
-def create_tls_handshake(handshake_message):
-    raw_handshake_message = bytes(handshake_message)
-    message_length = len(raw_handshake_message)
-
-    handshake_header = TLSHandshakeHeader(
-        handshake_type=handshake_message.handshake_type, length=message_length
-    )
-    raw_handshake_header = bytes(handshake_header)
-    handshake_header_length = len(raw_handshake_header)
-
-    tls_header = TLSHeader(
-        content_type=ContentType.handshake,
-        version=(0x03, 0x03),
-        length=handshake_header_length + message_length,
-    )
-    raw_tls_header = bytes(tls_header)
-    tls_header_length = len(raw_tls_header)
-
-    return create_string_buffer(
-        raw_tls_header + raw_handshake_header + raw_handshake_message
-    )
-
+# lazy
+X509_CERT_TYPE_EXTENSION = int.from_bytes(
+    bytes.fromhex("000900020100"), byteorder="big"
+)
 
 HELLO_CIPHER_SUITE_SIZE = 2
 HELLO_CIPHER_SUITE_LENGTH_SIZE = 2
@@ -211,7 +73,44 @@ class Alert(namedtuple("Alert", ["level", "description"])):
         level = int.from_bytes(raw_header[0], byteorder="big")
         description = int.from_bytes(raw_header[1], byteorder="big")
 
-        return cls(level, description), b""
+        return cls(level, description)
+
+
+class HandshakeFinished(namedtuple("HandshakeFinished", [])):
+    def to_bytes(self):
+        return bytes([0x01])
+
+    @classmethod
+    def from_bytes(cls, raw):
+        if raw == bytes([0x01]):
+            return cls()
+        else:
+            return False
+
+
+class ChangeCipherSpec(namedtuple("ChangeCipherSpec", [])):
+    def to_bytes(self):
+        return bytes([0x01])
+
+    @classmethod
+    def from_bytes(cls, raw):
+        if raw == bytes([0x01]):
+            return cls()
+        else:
+            return False
+
+
+class ClientKeyExchange(namedtuple("ClientKeyExchange", ["enc_premaster_secret"])):
+    def to_bytes(self):
+        raw_length = int.to_bytes(128, 2, byteorder="big")
+        raw_enc_premaster_secret = self.enc_premaster_secret.to_bytes(
+            128, byteorder="big"
+        )
+        return raw_length + raw_enc_premaster_secret
+
+    @classmethod
+    def from_bytes(cls, raw):
+        return cls(bytes(raw[2:]))
 
 
 class ServerHelloDone(namedtuple("ServerHelloDone", [])):
@@ -220,7 +119,7 @@ class ServerHelloDone(namedtuple("ServerHelloDone", [])):
 
     @classmethod
     def from_bytes(cls, raw):
-        return cls(), b""
+        return cls()
 
 
 class Certificate(namedtuple("Certificate", ["certificates"])):
@@ -241,12 +140,12 @@ class Certificate(namedtuple("Certificate", ["certificates"])):
             raw_cert = bytes(raw[offset : offset + cert_length])
             offset += cert_length
 
-            cert = tlslite.x509.X509()
+            cert = X509()
             cert.parseBinary(raw_cert)
 
             certs.append(cert)
 
-        return cls(certs), b""
+        return cls(certs)
 
 
 class ServerHello(
@@ -291,11 +190,8 @@ class ServerHello(
         )
         offset += HELLO_COMPRESSION_METHOD_SIZE
 
-        return (
-            cls(
-                version, timestamp, random, session_id, cipher_suite, compression_method
-            ),
-            b"",
+        return cls(
+            version, timestamp, random, session_id, cipher_suite, compression_method
         )
 
 
@@ -323,15 +219,15 @@ class ClientHello(
         raw_session_id_length = session_id_length.to_bytes(1, byteorder="big")
         raw_session_id = self.session_id
 
-        raw_cipher_suites = self.encode_list_to_bytes(
+        raw_cipher_suites = encode_list_to_bytes(
             self.cipher_suites, HELLO_CIPHER_SUITE_SIZE, HELLO_CIPHER_SUITE_LENGTH_SIZE
         )
-        raw_compression_methods = self.encode_list_to_bytes(
+        raw_compression_methods = encode_list_to_bytes(
             self.compression_methods,
             HELLO_COMPRESSION_METHOD_SIZE,
             HELLO_COMPRESSION_METHOD_LENGTH_SIZE,
         )
-        raw_extensions = self.encode_list_to_bytes(
+        raw_extensions = encode_list_to_bytes(
             self.extensions, HELLO_EXTENSION_SIZE, HELLO_EXTENSION_LENGTH_SIZE
         )
 
@@ -340,6 +236,8 @@ class ClientHello(
                 raw_version,
                 raw_timestamp,
                 raw_random,
+                raw_session_id_length,
+                raw_session_id,
                 raw_cipher_suites,
                 raw_compression_methods,
                 raw_extensions,
@@ -347,117 +245,112 @@ class ClientHello(
         )
 
 
-class HandshakeHeader(namedtuple("HandshakeHeader", ["handshake_type", "length"])):
+class Handshake(namedtuple("Handshake", ["handshake_type", "body"])):
     def to_bytes(self):
         raw_type = self.handshake_type.to_bytes(1, byteorder="big")
-        raw_length = self.length.to_bytes(3, byteorder="big")
+        raw_body = self.body.to_bytes()
 
-        return raw_type + raw_length
+        raw_length = len(raw_body).to_bytes(3, byteorder="big")
 
-    @classmethod
-    def from_bytes(cls, raw_header):
-        handshake_type = raw_header[0].from_bytes(byteorder="big")
-        length = raw_header[1:4].from_bytes(byteorder="big")
-
-        return cls(handshake_type, length), b""
-
-
-class Handshake(namedtuple("Handshake", ["header", "body"])):
-    def to_bytes(self):
-        raw_header = self.header.to_bytes()
-        raw_message = self.message.to_bytes()
-
-        return raw_header + raw_message
+        return raw_type + raw_length + raw_body
 
     @classmethod
-    def from_bytes(cls, raw_handshake):
-        header, raw_body = HandshakeHeader.from_bytes(raw_handshake)
+    def from_bytes(cls, raw):
+        raw_header, raw_body = raw[0:4], raw[4:]
+
+        handshake_type = int.from_bytes(raw_header[0:1], byteorder="big")
+        length = int.from_bytes(raw_header[1:4], byteorder="big")
 
         body = {
             HandshakeType.client_hello: ClientHello,
             HandshakeType.server_hello: ServerHello,
             HandshakeType.server_hello_done: ServerHelloDone,
             HandshakeType.certificate: Certificate,
-        }[header.handshake_type].from_bytes(raw_body[0 : header.length])
+        }[handshake_type].from_bytes(raw_body[0:length])
 
-        return cls(header, body), b""
+        return cls(handshake_type, body)
 
 
-class TLSHeader(namedtuple("TLSHeader", ["content_type", "version", "length"])):
+class Record(namedtuple("Record", ["content_type", "version", "body", "raw"])):
     def to_bytes(self):
         raw_content_type = self.content_type.to_bytes(1, byteorder="big")
         raw_version = self.version.to_bytes(2, byteorder="big")
-        raw_length = self.length.to_bytes(2, byteorder="big")
-
-        return raw_content_type + raw_version + raw_length
-
-    @classmethod
-    def from_bytes(cls, raw_message):
-        content_type = int.from_bytes(raw_message[0], byteorder="big")
-        version = int.from_bytes(raw_message[1:3], byteorder="big")
-        length = int.from_bytes(raw_message[3:5], byteorder="big")
-
-        return cls(content_type, version, length), raw_message[5:], b""
-
-
-class TLSRecord(namedtuple("TLSRecord", ["header", "body"])):
-    def to_bytes(self):
-        raw_header = self.header.to_bytes()
         raw_body = self.body.to_bytes()
+        raw_length = len(raw_body).to_bytes(2, byteorder="big")
 
-        return raw_header + raw_body
+        return raw_content_type + raw_version + raw_length + raw_body
 
     @classmethod
-    def from_bytes(cls, raw_record):
-        header, raw_body = TLSHeader.from_bytes(raw_record)
+    def from_bytes(cls, raw):
+        raw_header, raw_body = raw[0:5], raw[5:]
+
+        content_type = int.from_bytes(raw_header[0:1], byteorder="big")
+        version = int.from_bytes(raw_header[1:3], byteorder="big")
+        length = int.from_bytes(raw_header[3:5], byteorder="big")
 
         body = {
-            ContentType.handshake: Handshake,
-            ContentType.application_data: ApplicationData,
-            ContentType.change_cipher_spec: ChangeCipherSpec,
             ContentType.alert: Alert,
-        }[header.content_type].from_bytes(raw_body[0 : header.length])
+            ContentType.handshake: Handshake,
+            # ContentType.application_data: ApplicationData,
+            # ContentType.change_cipher_spec: ChangeCipherSpec,
+        }[content_type].from_bytes(raw_body[0:length])
 
-        leftovers = raw_body[header.length :]
-
-        return cls(header, body), leftovers
+        return cls(content_type, version, body, raw[0 : 5 + length])
 
 
 if __name__ == "__main__":
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect(("antelope", 443))
 
-    # create and send client hello
-    client_hello = create_tls_handshake(
-        TLSHandshakeClientHello(
-            version=(0x03, 0x03),
-            timestamp=2451205766,
-            random_bytes=secrets.token_bytes(28),
-            cipher_suites=CipherSuite.TLS_RSA_WITH_AES_256_CBC_SHA,
-            extensions=TLSExtensionCertificateType(
-                ExtensionType.cert_type, 2, 1, CertificateType.x509
+    client_hello = Record(
+        ContentType.handshake,
+        TLS_VERSION_1_0,
+        Handshake(
+            HandshakeType.client_hello,
+            ClientHello(
+                TLS_VERSION_1_0,
+                2451205766,
+                secrets.token_bytes(28),
+                b"",
+                [CipherSuite.TLS_RSA_WITH_AES_256_CBC_SHA],
+                [0],
+                [X509_CERT_TYPE_EXTENSION],
             ),
-        )
+        ),
+        None,
     )
-    sock.send(client_hello)
+    sock.send(client_hello.to_bytes())
 
-    # read and parse response: should have three messages
     response = recvall(sock)
 
-    offset = 0
+    server_hello = Record.from_bytes(response)
+    response = response[len(server_hello.raw) :]
 
-    server_hello = TLSHandshakeServerHello.from_buffer_copy(response[offset:])
-    server_hello_length = len(bytes(server_hello))
-    offset += server_hello_length
+    certificates = Record.from_bytes(response)
+    response = response[len(certificates.raw) :]
 
-    cert_length = int.from_bytes(response[offset : offset + 2], byteorder="big")
-    server_cert = TLSHandshakeCertificate.from_cert(
-        response[offset : offset + cert_length]
+    server_hello_done = Record.from_bytes(response)
+    response = response[len(server_hello_done.raw) :]
+
+    client_key_exchange = Record(
+        ContentType.handshake,
+        TLS_VERSION_1_0,
+        Handshake(HandshakeType.client_key_exchange, ClientKeyExchange(0)),
+        None,
     )
-    offset += cert_length
+    change_cipher_spec = Record(
+        ContentType.change_cipher_spec, TLS_VERSION_1_0, ChangeCipherSpec()
+    )
+    encrypted_handshake = Record(ContentType.handshake, TLS_VERSION_1_0)
+    combined_message = (
+        client_key_exchange.to_bytes()
+        + change_cipher_spec.to_bytes()
+        + encrypted_handshake.to_bytes()
+    )
 
-    server_hello_done = TLSHandshakeServerHelloDone.from_buffer_copy(response[offset:])
-
-    # send clientkeyexchange
+    start_time = rdtsc.get_cycles()
+    sock.send(combined_message)
+    response = recvall(sock)
+    end_time = rdtsc.get_cycles()
 
     code.interact(local=locals())
