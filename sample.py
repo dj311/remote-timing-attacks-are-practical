@@ -2,25 +2,41 @@ import argparse
 import attack
 import gc
 import socket
+import tls
 
 
-def sample(points, iterations):
+def sample(points, samples):
     gc.disable()
-    gc.collect()
 
-    for index in points:
+    for point in points:
+        for iteration in range(samples):
+            gc.collect()
+
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect(("antelope", 443))
+
+            start_time, response, end_time = tls.handshake_attack(sock, g=point)
+            print(point, point, end_time - start_time)
+
+            sock.close()
+
+
+def sample_tlslite(points, iterations):
+    gc.disable()
+
+    for point in points:
         for iteration in range(iterations):
+            gc.collect()
+
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.connect(("antelope", 443))
 
             connection = attack.AttackTLSConnection(sock)
-            start_time, end_time = connection.performHandshakeAttack(index)
-            print(index, iteration, start_time, end_time, end_time - start_time)
+            start_time, end_time = connection.performHandshakeAttack(point)
+            print(point, end_time - start_time)
 
             connection.close()
             sock.close()
-
-            gc.collect()
 
 
 if __name__ == "__main__":
