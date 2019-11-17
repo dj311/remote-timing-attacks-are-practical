@@ -5,22 +5,6 @@ import socket
 import tls
 
 
-def sample(points, samples):
-    gc.disable()
-
-    for point in points:
-        for iteration in range(samples):
-            gc.collect()
-
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect(("antelope", 443))
-
-            start_time, response, end_time = tls.handshake_attack(sock, g=point)
-            print(point, point, end_time - start_time)
-
-            sock.close()
-
-
 def sample_tlslite(points, iterations):
     gc.disable()
 

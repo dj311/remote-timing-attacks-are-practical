@@ -7,4 +7,5 @@ COPY attack-requirements.txt /tmp/
 RUN python3 -m pip install -r /tmp/attack-requirements.txt
 
 COPY . /project
-ENTRYPOINT ["python3", "/project/attack.py"]
+WORKDIR /project
+ENTRYPOINT ["python3", "attack.py"]

