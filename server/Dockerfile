@@ -3,8 +3,8 @@ FROM ubuntu:rolling
 # ubuntu-dependencies.txt is just a list of packages we want
 # installed. These are mostly prerequisites for compiling and
 # installing OpenSSL + Apache + mod_ssl.
-COPY ../ubuntu-dependencies.txt /tmp/
-RUN apt-get update && xargs -a /tmp/ubuntu-dependencies.txt apt-get install -y
+COPY ./ubuntu-requirements.txt /tmp/
+RUN apt-get update && xargs -a /tmp/ubuntu-requirements.txt apt-get install -y
 
 # We need default sh to be bash for some configure scripts to work correctly
 # we could just run "bash ./configure ..." but the mod_ssl configure script

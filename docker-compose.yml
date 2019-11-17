@@ -1,0 +1,14 @@
+version: "2"
+services:
+  server:
+    build: server
+    ports:
+      - "443:443"
+    cpuset: "2"
+  client:
+    build: client
+    volumes:
+      - "./client:/project"
+    cpuset: "3"
+
+
