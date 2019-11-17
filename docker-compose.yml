@@ -5,10 +5,13 @@ services:
     ports:
       - "443:443"
     cpuset: "2"
+    network_mode: "host"
   client:
     build: client
     volumes:
       - "./client:/project"
     cpuset: "3"
+    network_mode: "host"
+
 
 
