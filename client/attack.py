@@ -69,7 +69,7 @@ def sample(points, samples):
             gc.collect()
 
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect(("antelope", 443))
+            sock.connect(("localhost", 443))
 
             start_time, response, end_time = tls.handshake_attack(sock, g=point)
             print(point, end_time - start_time)

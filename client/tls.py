@@ -553,7 +553,7 @@ def handshake_attack(sock, g):
 
 if __name__ == "__main__":
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect(("antelope", 443))
+    sock.connect(("localhost", 443))
 
     gc.disable()
     time = handshake_attack(sock, g=0)
