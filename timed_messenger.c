@@ -1,18 +1,44 @@
-/*
+/* ISC License
 
-Timed Messenger
-===============
-Little C library for sending and receiving TCP messages over a given
-socket with /accurate/ timing information. The library uses the rdtsc
-and cpuid instructions to count cycles, and disable out-of-order
-execution temporarily.
+   Copyright (c) 2019, Daniel Jones
 
-References:
-- https://www.geeksforgeeks.org/how-to-call-a-c-function-in-python/
-- https://github.com/Roguelazer/rdtsc/
-- https://stackoverflow.com/questions/9200560/
+   Based upon https://github.com/Roguelazer/rdtsc/blob/master/src/rdtsc.c
+   with the following licensing.
+
+   Copyright (c) 2015-2016, James Brown
+
+   Permission to use, copy, modify, and/or distribute this software for any
+   purpose with or without fee is hereby granted, provided that the above
+   copyright notice and this permission notice appear in all copies.
+
+   THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+   WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+   MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+   SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+   WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
+   OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+   CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 */
+
+
+/*
+
+  Timed Messenger
+  ===============
+  Little C library for sending and receiving TCP messages over a given
+  socket with /accurate/ timing information. The library uses the rdtsc
+  and cpuid instructions to count cycles, and disable out-of-order
+  execution temporarily.
+
+  References:
+  - https://www.geeksforgeeks.org/how-to-call-a-c-function-in-python/
+  - https://github.com/Roguelazer/rdtsc/
+  - https://stackoverflow.com/questions/9200560/
+
+*/
+
+
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
@@ -23,7 +49,7 @@ unsigned long long get_cycles() {
   long long out;
   asm volatile(
                "CPUID;"
-               "RDTSCP;"  /* outputs to EDX:EAX and the (unused) cpuid to ECX*/
+               "RDTSCP;"
                "SHLQ $32,%%rdx;"
                "ORQ %%rdx,%%rax;"
                "MOVQ %%rax,%0;"
@@ -62,21 +88,3 @@ s_timed_response timed_send_and_receive(int conn_fd,
   return return_buf;
 }
 
-
-/* ISC License
-
-   Copyright (c) 2015-2016, James Brown
-
-   Permission to use, copy, modify, and/or distribute this software for any
-   purpose with or without fee is hereby granted, provided that the above
-   copyright notice and this permission notice appear in all copies.
-
-   THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-   WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-   MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
-   SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-   WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
-   OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
-   CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-*/
