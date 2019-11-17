@@ -1,8 +1,8 @@
 import code
 import gc
 import io
-import secrets
 import socket
+import secrets
 
 from collections import namedtuple
 from tlslite.mathtls import MD5, SHA1, PRF, calcMasterSecret
@@ -42,26 +42,6 @@ HELLO_EXTENSION_SIZE = 6
 HELLO_EXTENSION_LENGTH_SIZE = 2
 
 EMPTY_BYTES = b""
-
-
-def recvall(sock):
-    data = sock.recv(4096)
-    return data
-
-    # all_data = []
-
-    # all_data.append(data)
-
-    # try:
-    #     while True:
-    #         data = sock.recv(4096, socket.MSG_DONTWAIT)
-    #         all_data.append(data)
-
-    # except io.BlockingIOError:
-    #     pass  #  no more data to recieve
-
-    # finally:
-    #     return EMPTY_BYTES.join(all_data)
 
 
 def encode_list_to_bytes(items, item_size, length_size):
@@ -501,8 +481,6 @@ def encrypt_message(message, sequence_number, secrets, ciphersuite):
     else:
         raise Exception("Only TLS_RSA_WITH_AES_128_CBC_SHA cipher suite is supported")
 
-    pass
-
 
 def handshake_attack(sock, g):
     # -> Client Hello
@@ -525,7 +503,7 @@ def handshake_attack(sock, g):
     sock.send(client_hello.to_bytes())
 
     # <- ServerHello, Certificate, ServerHelloDone
-    response = recvall(sock)
+    response = sock.recv(4096)
 
     server_hello = Record.from_bytes(response)
     offset = len(server_hello)
@@ -576,6 +554,7 @@ def handshake_attack(sock, g):
     tr = timed_messenger.timed_send_and_receive(conn_fd, message, message_length)
     response = bytes(tr.response[0 : tr.response_length])
 
+    # Make sure we got the expected response from the server
     alert = Record.from_bytes(response)
     assert alert.content_type == ContentType.alert
     assert alert.body.level == AlertLevel.fatal
