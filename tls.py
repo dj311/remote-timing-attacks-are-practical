@@ -12,19 +12,7 @@ from tlslite.x509 import X509
 from ctypes import *
 from tlslite.constants import *
 
-
-class TimedResponse(Structure):
-    _fields_ = [
-        ("start_time", c_ulonglong),
-        ("end_time", c_ulonglong),
-        ("response_length", c_int),
-        ("response", c_byte * 4096),
-    ]
-
-
-timed_messenger = CDLL("/project/libtimedmessenger.so")
-timed_messenger.timed_send_and_receive.argtypes = [c_int, c_char_p, c_uint]
-timed_messenger.timed_send_and_receive.restype = TimedResponse
+from timed_messenger import send_and_receive
 
 
 TLS_VERSION_1_0 = 769
@@ -551,7 +539,7 @@ def handshake_attack(sock, g):
     message = create_string_buffer(final_message)
     message_length = c_uint(len(message))
 
-    tr = timed_messenger.timed_send_and_receive(conn_fd, message, message_length)
+    tr = send_and_receive(conn_fd, message, message_length)
     response = bytes(tr.response[0 : tr.response_length])
 
     # Make sure we got the expected response from the server
