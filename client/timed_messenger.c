@@ -61,6 +61,9 @@ unsigned long long get_cycles() {
 }
 
 
+// Structure of the response from the timed_send_and_receive
+// function. This is the C equivelant to TimedResponse in
+// timed_messenger.py.
 typedef struct {
   unsigned long long start_time;
   unsigned long long end_time;

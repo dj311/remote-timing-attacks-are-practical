@@ -1,17 +1,26 @@
-from ctypes import *
+import ctypes
 
 
-class TimedResponse(Structure):
+class TimedResponse(ctypes.Structure):
+    """
+    Structure of the response from the send_and_receive function. This
+    is the ctypes equivelant to s_timed_response in timed_messenger.c
+    """
+
     _fields_ = [
-        ("start_time", c_ulonglong),
-        ("end_time", c_ulonglong),
-        ("response_length", c_int),
-        ("response", c_byte * 4096),
+        ("start_time", ctypes.c_ulonglong),
+        ("end_time", ctypes.c_ulonglong),
+        ("response_length", ctypes.c_int),
+        ("response", ctypes.c_byte * 4096),
     ]
 
 
-messenger = CDLL("./libtimedmessenger.so")
-messenger.timed_send_and_receive.argtypes = [c_int, c_char_p, c_uint]
+messenger = ctypes.CDLL("./libtimedmessenger.so")
+messenger.timed_send_and_receive.argtypes = [
+    ctypes.c_int,
+    ctypes.c_char_p,
+    ctypes.c_uint,
+]
 messenger.timed_send_and_receive.restype = TimedResponse
 
 
