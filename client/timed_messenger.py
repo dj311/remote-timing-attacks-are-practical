@@ -17,7 +17,7 @@ class TimedResponse(ctypes.Structure):
 
 
 C_SOURCE = "./timed_messenger.c"
-C_LIBRARY = "./timed_messenger.so"
+C_LIBRARY = "./libtimedmessenger.so"
 
 
 # To start, check if the C source code is newer than the compiled
