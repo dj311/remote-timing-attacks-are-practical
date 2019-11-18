@@ -11,4 +11,4 @@ COPY . /project
 RUN cd /project && cc -shared -fPIC -o libtimedmessenger.so timed_messenger.c
 
 WORKDIR /project
-ENTRYPOINT ["python3", "attack.py"]
+ENTRYPOINT ["jupyter", "notebook"]
