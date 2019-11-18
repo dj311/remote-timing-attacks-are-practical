@@ -1,4 +1,5 @@
 import ctypes
+import os
 
 
 class TimedResponse(ctypes.Structure):
@@ -15,7 +16,23 @@ class TimedResponse(ctypes.Structure):
     ]
 
 
-messenger = ctypes.CDLL("./libtimedmessenger.so")
+C_SOURCE = "./timed_messenger.c"
+C_LIBRARY = "./timed_messenger.so"
+
+
+# To start, check if the C source code is newer than the compiled
+# library.  If so, recompile the library before loading it.
+try:
+    library_exists = os.path.exists(C_LIBRARY)
+    library_stale = os.path.getmtime(C_SOURCE) > os.path.getmtime(C_LIBRARY)
+except OSError:
+    pass
+else:
+    if not library_exists or library_stale:
+        os.system(f"cc -shared -fPIC -o {C_LIBRARY} {C_SOURCE}")
+
+
+messenger = ctypes.CDLL(C_LIBRARY)
 messenger.timed_send_and_receive.argtypes = [
     ctypes.c_int,
     ctypes.c_char_p,

@@ -7,8 +7,5 @@ COPY python-requirements.txt /tmp/
 RUN python3 -m pip install -r /tmp/python-requirements.txt
 
 COPY . /project
-
-RUN cd /project && cc -shared -fPIC -o libtimedmessenger.so timed_messenger.c
-
 WORKDIR /project
 ENTRYPOINT ["jupyter", "notebook"]
