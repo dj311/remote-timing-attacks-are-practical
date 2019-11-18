@@ -26,8 +26,8 @@ try:
     library_exists = os.path.exists(C_LIBRARY)
     library_stale = os.path.getmtime(C_SOURCE) > os.path.getmtime(C_LIBRARY)
 except OSError:
-    pass
-else:
+    library_stale = None  # library doesn't exist
+finally:
     if not library_exists or library_stale:
         os.system(f"cc -shared -fPIC -o {C_LIBRARY} {C_SOURCE}")
 
