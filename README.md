@@ -3,14 +3,20 @@ An (attempted) implementation of the timing attack on OpenSSL 0.9.7 described in
 
 ## Summary
 This project consists of two key components:
-  1. Server :: An Ubuntu container which runs an Apache server on port 443 at startup. It uses Apache 1.3.27 built with `mod_ssl` 2.8.12 and using OpenSSL 0.9.7 as in the original paper (though its based on `ubuntu:rolling`). `./server/Dockerfile` contains instructions on how this was built. A pre-generated 1024-bit RSA keypair is located in `./server/ssl-certificate` and contains the secrets that the client aims to attract.
-  2. Client :: An Ubuntu container which runs a Jupyter notebook on port 8080 at startup. The `./client/attack.py` module contains the entrypoint for the attack, building upong the helper functions in `tls.py` and `timed_messenger.*`. This environment also contains `matplotlib`, `pandas`, `sympy` and others for data analysis.
+  1. Server :: Runs the vulnerable Apache server on port 443.
+  2. Client :: Runs a Jupyter notebook server on port 8080 for mounting the attack and performaing analysis.
 
 ### Server
-TODO
+An Ubuntu container running Apache 1.3.27 built with `mod_ssl` 2.8.12 and using OpenSSL 0.9.7. These are the versions used in the paper. `./server/Dockerfile` contains instructions on how this is built and setup.
+
+A pre-generated 1024-bit RSA keypair is located in `./server/ssl-certificate` and contains the secrets that the client aims to attract. The certificate is baked in at build time, so a `docker-compose build server` is needed if you want to change them.
+
+A notable difference: these programs are compiled and ran on (presumably) a 64-bit architecture rather than the 32-bit architecture used in the paper. From my reading and understanding of the attack, this doesn't affect the theory.
 
 ### Client
-TODO
+This container includes an environment for statistical analysis (`pandas`, `seaborn`, etc) and local modules written to implement the timing attack (`attack.py`, `tls.py`, and `timed_messenger.*`).
+
+The `./client/attack.py` module contains the entrypoint for the attack, building upong the helper functions in `tls.py` and `timed_messenger.*`. This environment also contains `matplotlib`, `pandas`, `sympy` and others for data analysis.
 
 ## Setup
 This project relies heavily on [Docker](https://www.docker.com) and [`docker-compose`](http://docs.docker.com/compose/install). This has only been tested on Linux but I imagine it'll work on Windows and Mac presuming the aforementioned tools are installed and working.
