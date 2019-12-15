@@ -4,7 +4,7 @@ An (attempted) implementation of the timing attack on OpenSSL 0.9.7 described in
 ## Summary
 This project consists of two key components:
   1. Server :: Runs the vulnerable Apache server on port 443.
-  2. Client :: Runs a Jupyter notebook server on port 8080 for mounting the attack and performaing analysis.
+  2. Client :: Runs a Jupyter notebook server on port 8080 for mounting the attack and performing analysis.
 
 ### Server
 An Ubuntu container running Apache 1.3.27 built with `mod_ssl` 2.8.12 and using OpenSSL 0.9.7. These are the versions used in the paper. `./server/Dockerfile` contains instructions on how this is built and setup.
