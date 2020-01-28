@@ -123,4 +123,7 @@ def recover_bit(known_q_bits, total_bits, N):
 
 
 if __name__ == "__main__":
-    bruteforce_most_significant_bits()
+    print("point time")
+    samples = bruteforce_most_significant_bits()
+    for point, time in samples:
+        print(point, time)
