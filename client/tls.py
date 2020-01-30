@@ -523,7 +523,7 @@ def handshake_attack(sock, g):
     client_key_exchange = Record(
         ContentType.handshake,
         TLS_VERSION_1_0,
-        Handshake(HandshakeType.client_key_exchange, ClientKeyExchange(0)),
+        Handshake(HandshakeType.client_key_exchange, ClientKeyExchange(g)),
     )
     # Finish off the handshake process
     change_cipher_spec = Record(
