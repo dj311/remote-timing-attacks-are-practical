@@ -43,6 +43,24 @@ def sympy_integer_to_bytes(integer, byteorder="big", length=None):
     return bys
 
 
+def bytes_to_sympy_integer(bys, byteorder="big"):
+    num_bytes = len(bys)
+
+    integer = sympy.Integer(0)
+
+    for index, by in enumerate(bys):
+        if byteorder == "big":
+            power = num_bytes - index - 1
+        elif byteorder == "little":
+            power = index
+        else:
+            raise Exception()
+
+        integer += by * 256 ** power
+
+    return integer
+
+
 def bits_to_sympy_integer(bits, byteorder="big"):
     num_bits = len(bits)
 
