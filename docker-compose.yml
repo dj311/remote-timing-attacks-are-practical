@@ -1,17 +1,14 @@
 version: "2"
 services:
-  server:
-    build: server
-    ports:
-      - "443:443"
-    cpuset: "2"
-    network_mode: "host"
   client:
     build: client
     volumes:
       - "./client:/project"
+    cpuset: "2"
+    network_mode: "host"
+  server:
+    build: server
+    ports:
+      - "443:443"
     cpuset: "3"
     network_mode: "host"
-
-
-
