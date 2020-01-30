@@ -158,11 +158,28 @@ class ChangeCipherSpec(namedtuple("ChangeCipherSpec", [])):
         return 2 + 128
 
 
+def sympy_integer_to_bytes(integer, byteorder="big", length=None):
+    bys = []
+
+    reduced = integer
+    while reduced > 0:
+        bys.append(reduced % 256)
+        reduced = reduced // 256
+
+    if length:
+        bys = bys + [0] * (length - len(bys))
+
+    if byteorder == "big":
+        bys.reverse()
+
+    return bytes(bys)
+
+
 class ClientKeyExchange(namedtuple("ClientKeyExchange", ["enc_premaster_secret"])):
     def to_bytes(self):
         raw_length = int.to_bytes(128, 2, byteorder="big")
-        raw_enc_premaster_secret = self.enc_premaster_secret.to_bytes(
-            128, byteorder="big"
+        raw_enc_premaster_secret = sympy_integer_to_bytes(
+            self.enc_premaster_secret, length=128, byteorder="big"
         )
         return raw_length + raw_enc_premaster_secret
 
