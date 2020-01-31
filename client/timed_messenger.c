@@ -45,18 +45,23 @@
 #include <sys/socket.h>
 
 
-unsigned long long get_cycles() {
+unsigned long long
+get_cycles(
+)
+{
   long long out;
+  /* *INDENT-OFF* */
   asm volatile(
-               "CPUID;"
-               "RDTSCP;"
-               "SHLQ $32,%%rdx;"
-               "ORQ %%rdx,%%rax;"
-               "MOVQ %%rax,%0;"
-               :"=r"(out)
-               : /*no input*/
-               :"rdx","rax", "rcx"
-               );
+    "CPUID;"
+    "RDTSCP;"
+    "SHLQ $32,%%rdx;"
+    "ORQ %%rdx,%%rax;"
+    "MOVQ %%rax,%0;"
+    :"=r"(out)
+    : /*no input*/
+    :"rdx","rax", "rcx"
+  );
+  /* *INDENT-ON* */
   return out;
 }
 
@@ -64,7 +69,8 @@ unsigned long long get_cycles() {
 // Structure of the response from the timed_send_and_receive
 // function. This is the C equivelant to TimedResponse in
 // timed_messenger.py.
-typedef struct {
+typedef struct
+{
   unsigned long long start_time;
   unsigned long long end_time;
   int response_length;
@@ -72,9 +78,13 @@ typedef struct {
 } s_timed_response;
 
 
-s_timed_response timed_send_and_receive(int conn_fd,
-                                        char* message,
-                                        unsigned int message_length) {
+s_timed_response
+timed_send_and_receive(
+  int conn_fd,
+  char *message,
+  unsigned int message_length
+)
+{
   s_timed_response return_buf;
   return_buf.start_time = 0;
   return_buf.end_time = 0;
@@ -90,4 +100,3 @@ s_timed_response timed_send_and_receive(int conn_fd,
 
   return return_buf;
 }
-
