@@ -93,8 +93,6 @@ def sample(points, sample_size=7, u_g=False, N=None):
 
     for point in points:
         for iteration in range(sample_size):
-            gc.collect()
-
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.connect(("localhost", 443))
 
@@ -108,6 +106,7 @@ def sample(points, sample_size=7, u_g=False, N=None):
 
             sock.close()
 
+    gc.collect()
     gc.enable()
 
     return samples
