@@ -126,8 +126,8 @@ def bruteforce_most_significant_bits(
     gs = [bits + [0] * (512 - num_bits) for bits in msb]
     gs = [bits_to_sympy_integer(g) for g in gs]
 
-    gs.append(p)
-    gs.append(q)
+    # gs.append(p)
+    # gs.append(q)
 
     gs = [g for g in gs if min_point <= g <= max_point]
 
