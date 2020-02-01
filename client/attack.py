@@ -189,14 +189,15 @@ if __name__ == "__main__":
         for i in range(0, len(known_bits)):
             print(i, q_bits[i], known_bits[i])
 
-        print("")
-        print("# Recovering bits iteratively...")
+        print("\n# Recovering bits iteratively...")
         gaps = []
         T_g_lows = []
         T_g_highs = []
         for i in range(len(known_bits), 20):
-            T_g_low, T_g_high = recover_bit(q_bits, i, N, sample_size=10, neighbourhood_size=800)
-            
+            T_g_low, T_g_high = recover_bit(
+                q_bits, i, N, sample_size=10, neighbourhood_size=800
+            )
+
             gap = abs(T_g_low - T_g_high)
             gaps.append(gap)
 
@@ -209,7 +210,14 @@ if __name__ == "__main__":
             print("")
 
         with open(sys.argv[3], "w") as f:
-            for i in range(20-len(known_bits)):
-                f.write("{} {} {} {} {} {}\n".format(i, q_bits[i], gaps[i], "-" if T_g_lows[i] < T_g_highs[i] else "+", T_g_lows[i], T_g_highs[i]))
-
-
+            for i in range(20 - len(known_bits)):
+                f.write(
+                    "{} {} {} {} {} {}\n".format(
+                        i,
+                        q_bits[i],
+                        gaps[i],
+                        "-" if T_g_lows[i] < T_g_highs[i] else "+",
+                        T_g_lows[i],
+                        T_g_highs[i],
+                    )
+                )
