@@ -138,23 +138,46 @@ def bruteforce_most_significant_bits(
     return gs
 
 
-def recover_bit(known_q_bits, total_bits, N):
-    i = len(known_q_bits) + 1
+def recover_bit(q_bits, i, N, sample_size=7, neighbourhood_size=400):
+    num_bits = len(q_bits)
 
-    num_bits_left = total_bits - (i + 1)
-    g_bits = known_q_bits + bytearray([0] * num_bits_left)
+    g_low_bits = q_bits[0:i] + [0] + [0] * (num_bits - (i + 1))
+    g_low = attack.bits_to_sympy_integer(g_low_bits)
+    g_low_neighbours = [g_low + k for k in range(neighbourhood_size)]
 
-    g_high_bits = g_bits
-    g_high_bits[i] = 1
+    print(
+        "Taking {} samples for bit {} set to low...".format(
+            len(g_low_neighbours) * sample_size, i
+        )
+    )
 
-    g = bits_to_sympy_integer(g_bits)
-    g_high = bits_to_sympy_integer(g_high)
+    g_low_samples = attack.sample(
+        g_low_neighbours, sample_size=sample_size, u_g=True, N=N
+    )
+    g_low_samples = pandas.DataFrame.from_records(
+        g_low_samples, columns=["point", "time"]
+    )
+    T_g_low = g_low_samples.groupby(by="point").min()["time"].sum()
 
-    # if q[i] == 1 then: g < g_high < q
-    # else:              g < q < g_high
-    R = sympy.Integer(2) ** 512
-    u_g = (g * R ** (-1)) % N
-    pass
+    g_high_bits = q_bits[0:i] + [1] + [0] * (num_bits - (i + 1))
+    g_high = attack.bits_to_sympy_integer(g_high_bits)
+    g_high_neighbours = [g_high + k for k in range(neighbourhood_size)]
+
+    print(
+        "Taking {} samples for bit {} set to high...".format(
+            len(g_high_neighbours) * sample_size, i
+        )
+    )
+
+    g_high_samples = attack.sample(
+        g_high_neighbours, sample_size=sample_size, u_g=True, N=N
+    )
+    g_high_samples = pandas.DataFrame.from_records(
+        g_high_samples, columns=["point", "time"]
+    )
+    T_g_high = g_high_samples.groupby(by="point").min()["time"].sum()
+
+    return T_g_low, T_g_high
 
 
 if __name__ == "__main__":
