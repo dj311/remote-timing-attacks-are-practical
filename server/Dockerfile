@@ -13,11 +13,11 @@ RUN apt-get update && xargs -a /tmp/ubuntu-requirements.txt apt-get install -y
 RUN ln -fs /bin/bash /bin/sh \
     && dpkg-reconfigure -f noninteractive dash
 
-# Download, install and compile OpenSSL 0.9.7a
+# Download, install and compile OpenSSL 0.9.7
 RUN cd /tmp \
-    && wget https://www.openssl.org/source/old/0.9.x/openssl-0.9.7a.tar.gz \
-    && tar --extract --auto-compress -f openssl-0.9.7a.tar.gz \
-    && cd openssl-0.9.7a \
+    && wget https://www.openssl.org/source/old/0.9.x/openssl-0.9.7.tar.gz \
+    && tar --extract --auto-compress -f openssl-0.9.7.tar.gz \
+    && cd openssl-0.9.7 \
     && sh ./config \
     && make
 # but don't install it yet, mod_ssl will do that later.
@@ -49,7 +49,7 @@ RUN cd /tmp \
     && wget www.modssl.org/source/OBSOLETE/mod_ssl-2.8.14-1.3.27.tar.gz \
     && tar --extract --auto-compress -f mod_ssl-2.8.14-1.3.27.tar.gz \
     && cd mod_ssl-2.8.14-1.3.27 \
-    && bash ./configure --with-apache=../apache_1.3.27 --with-ssl=../openssl-0.9.7a --prefix=/usr/local/apache
+    && bash ./configure --with-apache=../apache_1.3.27 --with-ssl=../openssl-0.9.7 --prefix=/usr/local/apache
 
 # Once downloaded, we tell mod_sll to configure and patch Apache as
 # needed. We then compile and install our patched Apache, making sure
