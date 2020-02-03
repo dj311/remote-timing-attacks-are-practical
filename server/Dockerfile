@@ -13,13 +13,29 @@ RUN apt-get update && xargs -a /tmp/ubuntu-requirements.txt apt-get install -y
 RUN ln -fs /bin/bash /bin/sh \
     && dpkg-reconfigure -f noninteractive dash
 
+# Use old gcc
+COPY gcc-old /root/gcc-old
+RUN dpkg --install \
+    /root/gcc-old/cpp-2.95_2.95.4-27_i386.deb \
+    /root/gcc-old/gcc-2.95_2.95.4-27_i386.deb \
+    /root/gcc-old/libstdc++2.10-dbg_2.95.4-27_i386.deb \
+    /root/gcc-old/chill-2.95_2.95.4-27_i386.deb \
+    /root/gcc-old/g++-2.95_2.95.4-27_i386.deb \
+    /root/gcc-old/g77-2.95_2.95.4-27_i386.deb \
+    /root/gcc-old/gobjc-2.95_2.95.4-27_i386.deb \
+    /root/gcc-old/gpc-2.95_2.95.4-27_i386.deb \
+    /root/gcc-old/libg++2.8.1.3-dev_2.95.4-27_i386.deb \
+    /root/gcc-old/libg++2.8.1.3-glibc2.2_2.95.4-27_i386.deb \
+    /root/gcc-old/libstdc++2.10-dev_2.95.4-27_i386.deb \
+    /root/gcc-old/libstdc++2.10-glibc2.2_2.95.4-27_i386.deb
+
 # Download, install and compile OpenSSL 0.9.7
 RUN cd /tmp \
     && wget https://www.openssl.org/source/old/0.9.x/openssl-0.9.7.tar.gz \
     && tar --extract --auto-compress -f openssl-0.9.7.tar.gz \
     && cd openssl-0.9.7 \
-    && sh ./config \
-    && make
+    && /usr/bin/perl ./Configure linux-pentium \
+    && make CC=gcc-2.95
 # but don't install it yet, mod_ssl will do that later.
 
 # Download and patch an appropriate version of Apache for our OpenSSL (version
