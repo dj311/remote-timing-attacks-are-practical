@@ -13,21 +13,15 @@ RUN apt-get update && xargs -a /tmp/ubuntu-requirements.txt apt-get install -y
 RUN ln -fs /bin/bash /bin/sh \
     && dpkg-reconfigure -f noninteractive dash
 
-# Use old gcc
-COPY gcc-old /root/gcc-old
-RUN dpkg --install \
-    /root/gcc-old/cpp-2.95_2.95.4-27_i386.deb \
-    /root/gcc-old/gcc-2.95_2.95.4-27_i386.deb \
-    /root/gcc-old/libstdc++2.10-dbg_2.95.4-27_i386.deb \
-    /root/gcc-old/chill-2.95_2.95.4-27_i386.deb \
-    /root/gcc-old/g++-2.95_2.95.4-27_i386.deb \
-    /root/gcc-old/g77-2.95_2.95.4-27_i386.deb \
-    /root/gcc-old/gobjc-2.95_2.95.4-27_i386.deb \
-    /root/gcc-old/gpc-2.95_2.95.4-27_i386.deb \
-    /root/gcc-old/libg++2.8.1.3-dev_2.95.4-27_i386.deb \
-    /root/gcc-old/libg++2.8.1.3-glibc2.2_2.95.4-27_i386.deb \
-    /root/gcc-old/libstdc++2.10-dev_2.95.4-27_i386.deb \
-    /root/gcc-old/libstdc++2.10-glibc2.2_2.95.4-27_i386.deb
+# Download, install, and compile gcc-2.95.2 (which is equivelant to 2.96
+#  accordingly to https://gcc.gnu.org/gcc-2.96.html).
+RUN cd /tmp \
+    && wget http://ftp.gnu.org/gnu/gcc/gcc-2.95.2.tar.gz
+    && tar --extract --auto-compress -f gcc-2.95.2.tar.gz \
+    && mkdir ./gcc-build \
+    && cd ./gcc-build \
+    && ../gcc-2.95.2/configure i386-whatever-linux2 \
+    && make BOOT_CFLAGS="-g -O2 -std=gnu89" C_FLAGS="-g -O2 -std=gnu89" CFLAGS_FOR_TARGET="-g -O2 -std=gnu89" LANGUAGES="c" bootstrap
 
 # Download, install and compile OpenSSL 0.9.7
 RUN cd /tmp \
