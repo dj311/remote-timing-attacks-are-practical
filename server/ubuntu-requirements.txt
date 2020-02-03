@@ -1,5 +1,6 @@
 wget
 cmake
+gcc
 perl6
 gzip
 flex

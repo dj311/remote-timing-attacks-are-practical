@@ -1,4 +1,4 @@
-FROM i386/ubuntu:rolling
+FROM ubuntu:rolling
 
 # ubuntu-dependencies.txt is just a list of packages we want
 # installed. These are mostly prerequisites for compiling and
@@ -13,23 +13,13 @@ RUN apt-get update && xargs -a /tmp/ubuntu-requirements.txt apt-get install -y
 RUN ln -fs /bin/bash /bin/sh \
     && dpkg-reconfigure -f noninteractive dash
 
-# Download, install, and compile gcc-2.95.2 (which is equivelant to 2.96
-#  accordingly to https://gcc.gnu.org/gcc-2.96.html).
-RUN cd /tmp \
-    && wget http://ftp.gnu.org/gnu/gcc/gcc-2.95.2.tar.gz
-    && tar --extract --auto-compress -f gcc-2.95.2.tar.gz \
-    && mkdir ./gcc-build \
-    && cd ./gcc-build \
-    && ../gcc-2.95.2/configure i386-whatever-linux2 \
-    && make BOOT_CFLAGS="-g -O2 -std=gnu89" C_FLAGS="-g -O2 -std=gnu89" CFLAGS_FOR_TARGET="-g -O2 -std=gnu89" LANGUAGES="c" bootstrap
-
 # Download, install and compile OpenSSL 0.9.7
 RUN cd /tmp \
     && wget https://www.openssl.org/source/old/0.9.x/openssl-0.9.7.tar.gz \
     && tar --extract --auto-compress -f openssl-0.9.7.tar.gz \
     && cd openssl-0.9.7 \
-    && /usr/bin/perl ./Configure linux-pentium \
-    && make CC=gcc-2.95
+    && sh ./config \
+    && make
 # but don't install it yet, mod_ssl will do that later.
 
 # Download and patch an appropriate version of Apache for our OpenSSL (version
