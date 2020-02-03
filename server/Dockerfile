@@ -1,4 +1,4 @@
-FROM ubuntu:rolling
+FROM i386/ubuntu:rolling
 
 # ubuntu-dependencies.txt is just a list of packages we want
 # installed. These are mostly prerequisites for compiling and
