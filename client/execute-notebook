@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+jupyter nbconvert --to notebook --execute --debug --allow-errors --ExecutePreprocessor.timeout=None "$1"  | tee "$1.output"
