@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-jupyter nbconvert --to notebook --execute --debug --allow-errors --ExecutePreprocessor.timeout=None "$1"  | tee "$1.output"
+jupyter nbconvert --to notebook --execute --debug --allow-errors --ExecutePreprocessor.timeout=None --output "$1.$(date +%Y-%m-%dT%H-%M-%S).ipynb" "$1"  | tee "$1.$(date +%Y-%m-%dT%H-%M-%S).debug-output"
