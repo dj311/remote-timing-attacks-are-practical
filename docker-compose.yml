@@ -6,6 +6,8 @@ services:
       - "./client:/project"
     cpuset: "2"
     network_mode: "host"
+    depends_on:
+      - server
   server:
     build: server
     ports:
