@@ -150,8 +150,6 @@ def recover_bit(q_bits, i, N, sample_size=7, neighbourhood_size=400):
     g_low = bits_to_sympy_integer(g_low_bits)
     g_low_neighbours = [g_low + k for k in range(neighbourhood_size)]
 
-    print(g_low_bits[0:20])
-
     g_low_samples = sample(g_low_neighbours, sample_size=sample_size, u_g=True, N=N)
     g_low_samples = pandas.DataFrame.from_records(
         g_low_samples, columns=["point", "time"]
@@ -161,8 +159,6 @@ def recover_bit(q_bits, i, N, sample_size=7, neighbourhood_size=400):
     g_high_bits = q_bits[0:i] + [1] + [0] * (num_bits - (i + 1))
     g_high = bits_to_sympy_integer(g_high_bits)
     g_high_neighbours = [g_high + k for k in range(neighbourhood_size)]
-
-    print(g_high_bits[0:20])
 
     g_high_samples = sample(g_high_neighbours, sample_size=sample_size, u_g=True, N=N)
     g_high_samples = pandas.DataFrame.from_records(
