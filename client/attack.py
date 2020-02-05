@@ -4,6 +4,7 @@ import socket
 import tls
 import gc
 import pandas
+import subprocess
 
 
 q = sympy.Integer(
@@ -15,6 +16,24 @@ p = sympy.Integer(
 N = sympy.Integer(
     132762152776056020551326919245624484615462467876809681535549565118332290525598572815747323476102181376625279228965473106140757139049665124368186142774966643990206422037551427526013151129106319233128471783533673959766053786798472937188481868923726256436384468384858420931063093337134977283618537887974322079287
 )
+
+
+def check_cpu_frequency_scaling():
+    cp = subprocess.run(
+        "cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor",
+        text=True,
+        capture_output=True,
+        shell=True,
+    )
+    cpu_freq_scaling = cp.stdout.split("\n")
+    scaling_disabled = all([cpu in ["performance", ""] for cpu in cpu_freq_scaling])
+    if not scaling_disabled:
+        print(
+            "WARNING: CPU Frequency Scaling is enabled on this computer "
+            "which could affect timing measurements. Run the following "
+            "command on the host computer to disable it: "
+            "for GOVERNOR in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo \"$GOVERNOR: Changing from '$(cat $GOVERNOR)' to 'performance'\"; echo \"performance\" | sudo tee $GOVERNOR; done"
+        )
 
 
 def sympy_integer_to_bits(integer, byteorder="big"):
@@ -92,6 +111,8 @@ def reverse_montegomery_transform(g, N):
 
 
 def sample(points, sample_size=7, neighbourhood_size=400, u_g=False, N=None):
+    check_cpu_frequency_scaling()
+
     samples = []
 
     gc.disable()
