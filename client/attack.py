@@ -103,8 +103,18 @@ def bits_to_sympy_integer(bits, byteorder="big"):
     return integer
 
 
+def calc_montgomery_R(N):
+    """
+    Source: OpenSSL 0.9.7 BN_MONT_CTX_SET()
+      ~/programming/openssl-0.9.7/openssl-0.9.7/crypto/bn/bn_mont.c:314
+    """
+    num_bits_in_N = len(sympy_integer_to_bits(N))
+    R = sympy.Integer(2) ** num_bits_in_N
+    return R
+
+
 def reverse_montegomery_transform(g, N):
-    R = sympy.Integer(2) ** 512
+    R = calc_montgomery_R(N)
     R_inverse = sympy.numbers.mod_inverse(R, N)
     u_g = (g * R_inverse) % N
     return u_g
@@ -117,10 +127,10 @@ def sample(points, sample_size=7, neighbourhood_size=400, u_g=False, N=None):
 
     gc.disable()
 
-    for iteration in range(sample_size):
-        for point in points:
-            neighbourhood = [point + k for k in range(neighbourhood_size)]
-            for neighbour in neighbourhood:
+    for point in points:
+        neighbourhood = [point + k for k in range(neighbourhood_size)]
+        for neighbour in neighbourhood:
+            for iteration in range(sample_size):
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.connect(("localhost", 443))
 
@@ -136,8 +146,8 @@ def sample(points, sample_size=7, neighbourhood_size=400, u_g=False, N=None):
 
                 sock.close()
 
-    gc.collect()
     gc.enable()
+    gc.collec()
 
     return samples
 
