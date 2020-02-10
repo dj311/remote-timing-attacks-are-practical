@@ -130,7 +130,7 @@ def sample(points, sample_size=7, neighbourhood_size=400, u_g=False, N=None):
     for point in points:
         neighbourhood = [point + k for k in range(neighbourhood_size)]
         for neighbour in neighbourhood:
-            for iteration in range(sample_size):
+            for _ in range(sample_size):
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.connect(("localhost", 443))
 
@@ -147,7 +147,7 @@ def sample(points, sample_size=7, neighbourhood_size=400, u_g=False, N=None):
                 sock.close()
 
     gc.enable()
-    gc.collec()
+    gc.collect()
 
     return samples
 

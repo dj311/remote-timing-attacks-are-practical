@@ -19,7 +19,7 @@ RUN cd /tmp \
     && tar --extract --auto-compress -f openssl-0.9.7.tar.gz \
     && cd openssl-0.9.7 \
     && sh ./config \
-    && make CFLAG="-DOPENSSL_THREADS -D_REENTRANT -DDSO_DLFCN -DHAVE_DLFCN_H -DOPENSSL_NO_KRB5 -m64 -DL_ENDIAN -DTERMIO -O0 -Wall -DMD32_REG_T=int"
+    && make CFLAG="-g"
 # (above $CFLAG is a copy of default settings with optimisations disabled)
 # but don't install it yet, mod_ssl will do that later.
 
