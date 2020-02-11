@@ -14,10 +14,12 @@ RUN ln -fs /bin/bash /bin/sh \
     && dpkg-reconfigure -f noninteractive dash
 
 # Download, install and compile OpenSSL 0.9.7
+COPY djwj-openssl-patch /tmp/
 RUN cd /tmp \
     && wget https://www.openssl.org/source/old/0.9.x/openssl-0.9.7.tar.gz \
     && tar --extract --auto-compress -f openssl-0.9.7.tar.gz \
     && cd openssl-0.9.7 \
+    && patch -p1 -i /tmp/djwj-openssl-patch \
     && sh ./config \
     && make CFLAG="-g"
 # (above $CFLAG is a copy of default settings with optimisations disabled)
@@ -61,7 +63,7 @@ RUN cd /tmp/apache_1.3.27 \
     && make install
 
 # Start it up
-ENTRYPOINT /usr/local/apache/bin/apachectl startssl \
+ENTRYPOINT /usr/local/apache/bin/httpd -DSSL -X \
            && echo "tail -f /usr/local/apache/logs/*_log" | /bin/bash
 
 # Dodgy echo | bash above allows us to Ctrl+C out of the container
