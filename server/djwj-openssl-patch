@@ -1,0 +1,133 @@
+diff -ruN orig/ssl/s3_pkt.c new/ssl/s3_pkt.c
+--- orig/ssl/s3_pkt.c	2002-07-10 06:57:49.000000000 +0000
++++ new/ssl/s3_pkt.c	2020-02-11 19:23:28.661727202 +0000
+@@ -354,6 +354,7 @@
+ 			goto err;
+ 
+ 		/* otherwise enc_err == -1 */
++		printf("djwj: Decryption Failed or Bad Record MAC. At ssl/s3_pkt.c:357 => Decryption Failed. tls3_enc() returned with enc_err=%d.\n", enc_err);
+ 		goto decryption_failed_or_bad_record_mac;
+ 		}
+ 
+@@ -380,6 +381,7 @@
+ 			SSLerr(SSL_F_SSL3_GET_RECORD,SSL_R_PRE_MAC_LENGTH_TOO_LONG);
+ 			goto f_err;
+ #else
++		        printf("djwj: Decryption Failed or Bad Record MAC. At ssl/s3_pkt.c:384 => MAC'd message length too long.");
+ 			goto decryption_failed_or_bad_record_mac;
+ #endif			
+ 			}
+@@ -391,6 +393,7 @@
+ 			SSLerr(SSL_F_SSL3_GET_RECORD,SSL_R_LENGTH_TOO_SHORT);
+ 			goto f_err;
+ #else
++		        printf("djwj: Decryption Failed or Bad Record MAC. At ssl/s3_pkt.c:396 => MAC'd message shorter than expected.\n");
+ 			goto decryption_failed_or_bad_record_mac;
+ #endif
+ 			}
+@@ -398,6 +401,7 @@
+ 		i=s->method->ssl3_enc->mac(s,md,0);
+ 		if (memcmp(md,&(rr->data[rr->length]),mac_size) != 0)
+ 			{
++		        printf("djwj: Decryption Failed or Bad Record MAC. At ssl/s3_pkt.c:404 => MAC in message and computed MAC are not equal.\n");
+ 			goto decryption_failed_or_bad_record_mac;
+ 			}
+ 		}
+diff -ruN orig/ssl/s3_srvr.c new/ssl/s3_srvr.c
+--- orig/ssl/s3_srvr.c	2002-11-29 11:31:51.000000000 +0000
++++ new/ssl/s3_srvr.c	2020-02-11 21:06:35.570473743 +0000
+@@ -125,6 +125,26 @@
+ #include <openssl/md5.h>
+ #include "cryptlib.h"
+ 
++
++// djwj:start
++unsigned long long
++get_cycles() {
++        long long out;
++        asm volatile(
++                "CPUID;"
++                "RDTSCP;"
++                "SHLQ $32,%%rdx;"
++                "ORQ %%rdx,%%rax;"
++                "MOVQ %%rax,%0;"
++                :"=r"(out)
++                : /*no input*/
++                :"rdx","rax", "rcx"
++        );
++        return out;
++}
++// djwj:end
++
++
+ static SSL_METHOD *ssl3_get_server_method(int ver);
+ static int ssl3_get_client_hello(SSL *s);
+ static int ssl3_check_client_hello(SSL *s);
+@@ -1362,6 +1382,8 @@
+ 
+ static int ssl3_get_client_key_exchange(SSL *s)
+ 	{
++        printf("djwj: Processing Client Key Exchange message.\n");
++
+ 	int i,al,ok;
+ 	long n;
+ 	unsigned long l;
+@@ -1440,7 +1462,10 @@
+ 				n=i;
+ 			}
+ 
++		long long start = get_cycles();
+ 		i=RSA_private_decrypt((int)n,p,p,rsa,RSA_PKCS1_PADDING);
++		long long end = get_cycles();
++		printf("djwj: internal measurement: time=%i, p(hex)=", end-start); int dani; for (dani = 0; dani < (int)n; dani++) {printf("%02X", p[dani]);} printf("\n");
+ 
+ 		al = -1;
+ 		
+@@ -1481,6 +1506,7 @@
+ 			 * "Chosen Ciphertext Attacks Against Protocols Based on the RSA
+ 			 * Encryption Standard PKCS #1", CRYPTO '98, LNCS 1462, pp. 1-12).
+ 			 */
++                        printf("djwj: Decryption failed of Pre-Master Secret from Client Key Exchange message. Replacing with random bytes instead. \n");
+ 			ERR_clear_error();
+ 			i = SSL_MAX_MASTER_KEY_LENGTH;
+ 			p[0] = s->client_version >> 8;
+@@ -1494,6 +1520,10 @@
+ 				s->session->master_key,
+ 				p,i);
+ 		OPENSSL_cleanse(p,i);
++
++                printf("djwj: Derived master key ");
++		int i; for (i = 0; i < s->session->master_key_length; i++) {printf("%02X", s->session->master_key[i]);} printf(".\n");
++
+ 		}
+ 	else
+ #endif
+@@ -1727,6 +1757,7 @@
+ 
+ 	return(1);
+ f_err:
++        printf("djwj: Sending Alert (level=Fatal) message. \n");
+ 	ssl3_send_alert(s,SSL3_AL_FATAL,al);
+ #if !defined(OPENSSL_NO_DH) || !defined(OPENSSL_NO_RSA)
+ err:
+@@ -2054,3 +2085,4 @@
+ 	/* SSL3_ST_SW_CERT_B */
+ 	return(ssl3_do_write(s,SSL3_RT_HANDSHAKE));
+ 	}
++
+diff -ruN orig/ssl/t1_enc.c new/ssl/t1_enc.c
+--- orig/ssl/t1_enc.c	2002-11-28 08:09:03.000000000 +0000
++++ new/ssl/t1_enc.c	2020-02-11 19:33:35.564957907 +0000
+@@ -616,6 +616,12 @@
+ 			{
+ 			ii=i=rec->data[l-1]; /* padding_length */
+ 			i++;
++
++			printf("djwj: ssl/t1_enc.c:619, tls3_enc: bs=%d, (padding_size)ii=%d, l=%u, (int)rec->length=%d", bs, i, l, (int)rec->length);
++		        printf(", rec->input="); int j; for (j = 0; j < (int)rec->length; j++) {printf("%02X", rec->input[j]);}
++		        printf(", rec->data="); for (j = 0; j < (int)rec->length; j++) {printf("%02X", rec->data[j]);}
++			printf("\n");
++
+ 			if (s->options&SSL_OP_TLS_BLOCK_PADDING_BUG)
+ 				{
+ 				/* First packet is even in size, so check */
