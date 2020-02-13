@@ -1,6 +1,6 @@
 diff -ruN orig/ssl/s3_pkt.c new/ssl/s3_pkt.c
 --- orig/ssl/s3_pkt.c	2002-07-10 06:57:49.000000000 +0000
-+++ new/ssl/s3_pkt.c	2020-02-11 19:23:28.661727202 +0000
++++ new/ssl/s3_pkt.c	2020-02-13 10:52:07.146401030 +0000
 @@ -354,6 +354,7 @@
  			goto err;
  
@@ -35,35 +35,16 @@ diff -ruN orig/ssl/s3_pkt.c new/ssl/s3_pkt.c
  		}
 diff -ruN orig/ssl/s3_srvr.c new/ssl/s3_srvr.c
 --- orig/ssl/s3_srvr.c	2002-11-29 11:31:51.000000000 +0000
-+++ new/ssl/s3_srvr.c	2020-02-11 21:06:35.570473743 +0000
-@@ -125,6 +125,26 @@
++++ new/ssl/s3_srvr.c	2020-02-13 10:55:33.088817021 +0000
+@@ -125,6 +125,7 @@
  #include <openssl/md5.h>
  #include "cryptlib.h"
  
 +
-+// djwj:start
-+unsigned long long
-+get_cycles() {
-+        long long out;
-+        asm volatile(
-+                "CPUID;"
-+                "RDTSCP;"
-+                "SHLQ $32,%%rdx;"
-+                "ORQ %%rdx,%%rax;"
-+                "MOVQ %%rax,%0;"
-+                :"=r"(out)
-+                : /*no input*/
-+                :"rdx","rax", "rcx"
-+        );
-+        return out;
-+}
-+// djwj:end
-+
-+
  static SSL_METHOD *ssl3_get_server_method(int ver);
  static int ssl3_get_client_hello(SSL *s);
  static int ssl3_check_client_hello(SSL *s);
-@@ -1362,6 +1382,8 @@
+@@ -1362,6 +1363,8 @@
  
  static int ssl3_get_client_key_exchange(SSL *s)
  	{
@@ -72,18 +53,42 @@ diff -ruN orig/ssl/s3_srvr.c new/ssl/s3_srvr.c
  	int i,al,ok;
  	long n;
  	unsigned long l;
-@@ -1440,7 +1462,10 @@
+@@ -1440,7 +1443,34 @@
  				n=i;
  			}
  
-+		long long start = get_cycles();
++		// djwj: start
++		unsigned start_cycles_high, start_cycles_low;
++		unsigned end_cycles_high, end_cycles_low;
++
++		asm volatile (
++			"CPUID;"
++			"RDTSC;"
++			"mov %%edx, %0;"
++			"mov %%eax, %1;"
++			: "=r" (start_cycles_high), "=r" (start_cycles_low)
++			:
++			: "%rax", "%rbx", "%rcx", "%rdx"
++		);
  		i=RSA_private_decrypt((int)n,p,p,rsa,RSA_PKCS1_PADDING);
-+		long long end = get_cycles();
-+		printf("djwj: internal measurement: time=%i, p(hex)=", end-start); int dani; for (dani = 0; dani < (int)n; dani++) {printf("%02X", p[dani]);} printf("\n");
++		asm volatile(
++			"RDTSCP;"
++			"mov %%edx, %0;"
++			"mov %%eax, %1;"
++			"CPUID;"
++			: "=r" (end_cycles_high), "=r" (end_cycles_low)
++			:
++			: "%rax", "%rbx", "%rcx", "%rdx"
++		);
++		unsigned long long start = ((unsigned long long)start_cycles_high << 32) | start_cycles_low;
++		unsigned long long end = ((unsigned long long)end_cycles_high << 32) | end_cycles_low;
++
++		printf("djwj: internal measurement: time=%llu, p(hex)=", end-start); int dani; for (dani = 0; dani < (int)n; dani++) {printf("%02X", p[dani]);} printf("\n");
++		// djwj: end
  
  		al = -1;
  		
-@@ -1481,6 +1506,7 @@
+@@ -1481,6 +1511,7 @@
  			 * "Chosen Ciphertext Attacks Against Protocols Based on the RSA
  			 * Encryption Standard PKCS #1", CRYPTO '98, LNCS 1462, pp. 1-12).
  			 */
@@ -91,7 +96,7 @@ diff -ruN orig/ssl/s3_srvr.c new/ssl/s3_srvr.c
  			ERR_clear_error();
  			i = SSL_MAX_MASTER_KEY_LENGTH;
  			p[0] = s->client_version >> 8;
-@@ -1494,6 +1520,10 @@
+@@ -1494,6 +1525,10 @@
  				s->session->master_key,
  				p,i);
  		OPENSSL_cleanse(p,i);
@@ -102,7 +107,7 @@ diff -ruN orig/ssl/s3_srvr.c new/ssl/s3_srvr.c
  		}
  	else
  #endif
-@@ -1727,6 +1757,7 @@
+@@ -1727,6 +1762,7 @@
  
  	return(1);
  f_err:
@@ -110,14 +115,14 @@ diff -ruN orig/ssl/s3_srvr.c new/ssl/s3_srvr.c
  	ssl3_send_alert(s,SSL3_AL_FATAL,al);
  #if !defined(OPENSSL_NO_DH) || !defined(OPENSSL_NO_RSA)
  err:
-@@ -2054,3 +2085,4 @@
+@@ -2054,3 +2090,4 @@
  	/* SSL3_ST_SW_CERT_B */
  	return(ssl3_do_write(s,SSL3_RT_HANDSHAKE));
  	}
 +
 diff -ruN orig/ssl/t1_enc.c new/ssl/t1_enc.c
 --- orig/ssl/t1_enc.c	2002-11-28 08:09:03.000000000 +0000
-+++ new/ssl/t1_enc.c	2020-02-11 19:33:35.564957907 +0000
++++ new/ssl/t1_enc.c	2020-02-13 10:52:07.146401030 +0000
 @@ -616,6 +616,12 @@
  			{
  			ii=i=rec->data[l-1]; /* padding_length */

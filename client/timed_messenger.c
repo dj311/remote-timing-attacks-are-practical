@@ -1,27 +1,3 @@
-/* ISC License
-
-   Copyright (c) 2019, Daniel Jones
-
-   Based upon https://github.com/Roguelazer/rdtsc/blob/master/src/rdtsc.c
-   with the following licensing.
-
-   Copyright (c) 2015-2016, James Brown
-
-   Permission to use, copy, modify, and/or distribute this software for any
-   purpose with or without fee is hereby granted, provided that the above
-   copyright notice and this permission notice appear in all copies.
-
-   THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-   WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-   MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
-   SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-   WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
-   OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
-   CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-*/
-
-
 /*
 
   Timed Messenger
@@ -31,7 +7,11 @@
   and cpuid instructions to count cycles, and disable out-of-order
   execution temporarily.
 
-  References:
+  Final timing code is based on the Appendix in "How to Benchmark Code
+  Execution Times on Intel IA-32 and IA-64 Instruction Set Architectures"
+  by Gabriele Paoloni, Intel (https://www.intel.com/content/dam/www/public/us/en/documents/white-papers/ia-32-ia-64-benchmark-code-execution-paper.pdf).
+
+  Other references:
   - https://www.geeksforgeeks.org/how-to-call-a-c-function-in-python/
   - https://github.com/Roguelazer/rdtsc/
   - https://stackoverflow.com/questions/9200560/
@@ -43,27 +23,6 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-
-
-unsigned long long
-get_cycles(
-)
-{
-  long long out;
-  /* *INDENT-OFF* */
-  asm volatile(
-    "CPUID;"
-    "RDTSCP;"
-    "SHLQ $32,%%rdx;"
-    "ORQ %%rdx,%%rax;"
-    "MOVQ %%rax,%0;"
-    :"=r"(out)
-    : /*no input*/
-    :"rdx","rax", "rcx"
-  );
-  /* *INDENT-ON* */
-  return out;
-}
 
 
 // Structure of the response from the timed_send_and_receive
@@ -91,12 +50,40 @@ timed_send_and_receive(
   memset(return_buf.response, 0, 4096);
   return_buf.response_length = 0;
 
-  return_buf.start_time = get_cycles();
+  unsigned start_cycles_high, start_cycles_low;
+  unsigned end_cycles_high, end_cycles_low;
+
+  /* *INDENT-OFF* */
+  asm volatile (
+    "CPUID;"
+    "RDTSC;"
+    "mov %%edx, %0;"
+    "mov %%eax, %1;"
+    : "=r" (start_cycles_high), "=r" (start_cycles_low)
+    :
+    : "%rax", "%rbx", "%rcx", "%rdx"
+  );
+  /* *INDENT-ON* */
 
   send(conn_fd, message, message_length, 0);
   return_buf.response_length = recv(conn_fd, return_buf.response, 4096, 0);
 
-  return_buf.end_time = get_cycles();
+  /* *INDENT-OFF* */
+  asm volatile(
+    "RDTSCP;"
+    "mov %%edx, %0;"
+    "mov %%eax, %1;"
+    "CPUID;"
+    : "=r" (end_cycles_high), "=r" (end_cycles_low)
+    :
+    : "%rax", "%rbx", "%rcx", "%rdx"
+  );
+  /* *INDENT-ON* */
+
+  return_buf.start_time =
+    ((unsigned long long)start_cycles_high << 32) | start_cycles_low;
+  return_buf.end_time =
+    ((unsigned long long)end_cycles_high << 32) | end_cycles_low;
 
   return return_buf;
 }
