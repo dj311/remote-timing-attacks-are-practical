@@ -1,1 +1,2 @@
 measurements/ filter=lfs diff=lfs merge=lfs -text
+measurements/* -diff
