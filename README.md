@@ -1,5 +1,7 @@
-# Remote Timing Attacks are Practical
-An (attempted) implementation of the timing attack on OpenSSL 0.9.7 described in "Remote Timing Attacks are Practical", a 2003 paper by David Brumley and Dan Boneh [1].
+# An OpenSSL Timing Attack
+This repo contains an /attempted/ implementation of the timing attack on OpenSSL 0.9.7 described in "Remote Timing Attacks are Practical", a 2003 paper by David Brumley and Dan Boneh [1]. This is a work-in-progress, because I can't get it work.
+
+The attack works against OpenSSL 0.9.7, and was the motivation for turning on [blinding](https://en.wikipedia.org/wiki/Blinding_\(cryptography\)) by default[2]. The general gist is that the time . The papers pretty accessible though, and provides a clearer explanation in only a few extra words.
 
 ## Summary
 This project consists of two key components:
@@ -28,3 +30,4 @@ Logs for both will be output to the calling terminal.
 
 ## References
   1. Brumley, David, and Dan Boneh. "Remote timing attacks are practical." Computer Networks 48.5 (2005): 701-716. [PDF](https://crypto.stanford.edu/~dabo/papers/ssl-timing.pdf).
+  2. "Timing-based attacks on RSA keys", OpenSSL Security Advisory. 17 March 2003. https://www.openssl.org/news/secadv/20030317.txt.
