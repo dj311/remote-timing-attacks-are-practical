@@ -1,6 +1,7 @@
 # Remote Timing Attacks are Practical
 This repo contains an (attempted) implementation of the timing attack on OpenSSL 0.9.7 described in "Remote Timing Attacks are Practical", a 2003 paper by David Brumley and Dan Boneh [1]. The attack works against OpenSSL 0.9.7, and was the motivation for turning on [blinding](https://en.wikipedia.org/wiki/Blinding_\(cryptography\)) by default in 2003 [2].  I haven't got it to work yet, sadly, but I think this repo still has some valuable information and resources for anyone trying to replicate the paper. If you have any advice, or have spotted an error, please do get in touch. I'm keen to get this working!
 
+## The Theory
 The general gist of the attack is that the time taken to perform an RSA decryption changes in relation to the . They combine two different (and sometimes conflicting) time leaks:
   1. 
   2. 
@@ -9,7 +10,7 @@ They send specially crafted values in place of the Encrypted PreMaster Secret in
 
 The papers pretty accessible though, and provides a clearer explanation in only a few extra words.
 
-## Summary
+## The Practice
 This project consists of two key components:
   1. Server :: Runs the vulnerable Apache server on port 443.
   2. Client :: Runs a Jupyter notebook server on port 8080 for mounting the attack and performing analysis.
