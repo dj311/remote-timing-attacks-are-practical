@@ -63,7 +63,7 @@ $ rm client/measurements/bit-samples.txt \
   client/measurements/bruteforce-top-bits.txt
   
 $ # Run the attack.ipynb notebook
-$ docker-compose run --detach --entrypoint=bash execute-notebook attack
+$ docker-compose run --detach --entrypoint=bash client execute-notebook attack
 
 $ # Gather internal OpenSSL time measurements from the servers stdout:
 $ docker-compose logs --no-color --tail=all --follow server \
