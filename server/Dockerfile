@@ -49,9 +49,9 @@ COPY ssl-certificate /root/ssl-cert
 #   - It is aimed at our specific version of Apache
 #   - Expects OpenSSL and not its predecessor, SSLeay.
 RUN cd /tmp \
-    && wget www.modssl.org/source/OBSOLETE/mod_ssl-2.8.14-1.3.27.tar.gz \
-    && tar --extract --auto-compress -f mod_ssl-2.8.14-1.3.27.tar.gz \
-    && cd mod_ssl-2.8.14-1.3.27 \
+    && wget http://www.modssl.org/source/OBSOLETE/mod_ssl-2.8.12-1.3.27.tar.gz \
+    && tar --extract --auto-compress -f mod_ssl-2.8.12-1.3.27.tar.gz \
+    && cd mod_ssl-2.8.12-1.3.27 \
     && bash ./configure --with-apache=../apache_1.3.27 --with-ssl=../openssl-0.9.7 --prefix=/usr/local/apache
 
 # Once downloaded, we tell mod_sll to configure and patch Apache as
