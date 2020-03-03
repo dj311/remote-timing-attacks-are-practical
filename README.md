@@ -61,7 +61,7 @@ $ # Delete existing measurement files, to signal that new ones must be generated
 $ rm client/measurements/bit-samples.txt \
   client/measurements/internal-measurements.txt \
   client/measurements/bruteforce-top-bits.txt
-  
+
 $ # Run the attack.ipynb notebook
 $ docker-compose run --detach --entrypoint=bash client execute-notebook attack
 
@@ -73,6 +73,7 @@ $ docker-compose logs --no-color --tail=all --follow server \
 
 ## Status
 Log:
+  * 2020-03-02 :: 4a9880e675469de4b01e187cdd3ef82c2831933e [🔗](https://github.com/dj311/remote-timing-attacks-are-practical/commit/4a9880e675469de4b01e187cdd3ef82c2831933e) :: It turns out that `mod_ssl` has blinding enabled by default from version 2.8.13 onwards. I've been using 2.8.14 🤦. The paper uses 2.8.12, which is the version I should have been using all along, I'm not sure how I ended up at 2.8.14. Rebuilding the server with 2.8.12 and taking new measurements didn't seem to help. Still, it's progress.
   * 2020-02-24 :: fbd7c1672226bb4b6ee6421590dfccf610f64ed3 [🔗](https://github.com/dj311/remote-timing-attacks-are-practical/commit/fbd7c1672226bb4b6ee6421590dfccf610f64ed3) :: The most recent set of measurements includes the internal measurements recorded within OpenSSL alongside those taken from the client container. I haven't been able to extract any useful signal from either of these. However, I believe these show that the network samples (taken with n=400, s=10) track the trend of the internal samples with sufficient acccuracy. I think this means that the problem is that either 1. we aren't triggering the bug 2. the analysis is incorrect.
   * 2020-02-11 :: 00c9848053a419d7ddf055e06126f80bac4f28f6 [🔗](https://github.com/dj311/remote-timing-attacks-are-practical/commit/00c9848053a419d7ddf055e06126f80bac4f28f6) :: When adding the logging code I noticed that the reason the handshake fails (and so the alert type returned by the server) can differ slightly. This is because, once the decryption fails, OpenSSL replaces the pre-master secret with random bytes. Sometimes those bytes will be detected as having the wrong padding whilst, rarely, the padding bytes will turn out to pass the initial sanity checks, and trigger a different error. I don't this alters the attack, but it's a fun tidbit.
 
