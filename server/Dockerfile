@@ -21,8 +21,7 @@ RUN cd /tmp \
     && cd openssl-0.9.7 \
     && patch -p1 -i /tmp/djwj-openssl-patch \
     && sh ./config \
-    && make CFLAG="-g"
-# (above $CFLAG is a copy of default settings with optimisations disabled)
+    && make
 # but don't install it yet, mod_ssl will do that later.
 
 # Download and patch an appropriate version of Apache for our OpenSSL (version
