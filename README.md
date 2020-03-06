@@ -39,7 +39,7 @@ This container includes some Python modules that implement the actual attack (`a
 
 The [`attack.ipynb`](./client/attack.ipynb) Jupyter notebook is a good starting point, providing a high-level overview of the attack. It uses the implementations in `attack.py` and `tls.py` to take measurements and infer information about the private key. Its worth diggin into these if you're more curious about what's going on. Since I haven't got this working yet, it's quite likely that the narrative around the code cells is out-of-date at any particular point.
 
-The `./client/attack.py` module contains the actual attack, `handshake_attack()`, and its caller, `sample()`. These build upon the helper functions in `tls.py` and `timed_messenger.*`.
+The [`attack.py`](./client/attack.py) module contains the actual attack, `handshake_attack()`, and its caller, `sample()`. These build upon the helper functions in [`tls.py`](/.client/tls.py) and [`timed_messenger.*`](./client/timed_messenger.c).
 
 The majority of the attack code is written in Python, with the exception of `timed_messenger.*` in C. This module sends a message over an open socket, waits for a response, and times how long the whole thing takes. It does this using the guidance in the "How to Benchmark Code Execution Times" whitepaper from Intel [3].
 
