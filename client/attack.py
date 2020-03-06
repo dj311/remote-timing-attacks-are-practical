@@ -132,6 +132,7 @@ def sample(points, sample_size=7, neighbourhood_size=400, u_g=False, N=None):
         for neighbour in neighbourhood:
             for _ in range(sample_size):
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.connect(("localhost", 443))
 
                 if u_g and N:
