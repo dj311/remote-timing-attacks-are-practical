@@ -48,7 +48,7 @@ def calc_montgomery_R(N):
     return R
 
 
-def reverse_montegomery_transform(g, N):
+def reverse_montgomery_transform(g, N):
     R = calc_montgomery_R(N)
     R_inverse = sympy.numbers.mod_inverse(R, N)
     u_g = (g * R_inverse) % N
@@ -71,7 +71,7 @@ def sample(points, sample_size=7, neighbourhood_size=400, u_g=False, N=None):
                 sock.connect(("localhost", 443))
 
                 if u_g and N:
-                    value_to_send = reverse_montegomery_transform(neighbour, N)
+                    value_to_send = reverse_montgomery_transform(neighbour, N)
                 else:
                     value_to_send = neighbour
 
