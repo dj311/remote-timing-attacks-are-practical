@@ -1,10 +1,12 @@
 import sys
 import sympy
 import socket
-import tls
 import gc
 import pandas
 import subprocess
+
+import tls
+import utils
 
 
 q = sympy.Integer(
@@ -36,79 +38,12 @@ def check_cpu_frequency_scaling():
         )
 
 
-def sympy_integer_to_bits(integer, byteorder="big"):
-    bits = []
-
-    reduced = integer
-    while reduced > 0:
-        bits.append(reduced % 2)
-        reduced = reduced // 2
-
-    if byteorder == "big":
-        bits.reverse()
-
-    return bits
-
-
-def sympy_integer_to_bytes(integer, byteorder="big", length=None):
-    bys = []
-
-    reduced = integer
-    while reduced > 0:
-        bys.append(reduced % 256)
-        reduced = reduced // 256
-
-    if length:
-        bys = bys + [0] * (length - len(bys))
-
-    if byteorder == "big":
-        bys.reverse()
-
-    return bys
-
-
-def bytes_to_sympy_integer(bys, byteorder="big"):
-    num_bytes = len(bys)
-
-    integer = sympy.Integer(0)
-
-    for index, by in enumerate(bys):
-        if byteorder == "big":
-            power = num_bytes - index - 1
-        elif byteorder == "little":
-            power = index
-        else:
-            raise Exception()
-
-        integer += by * 256 ** power
-
-    return integer
-
-
-def bits_to_sympy_integer(bits, byteorder="big"):
-    num_bits = len(bits)
-
-    integer = sympy.Integer(0)
-
-    for index, bit in enumerate(bits):
-        if byteorder == "big":
-            power = num_bits - index - 1
-        elif byteorder == "little":
-            power = index
-        else:
-            raise Exception()
-
-        integer += bit * 2 ** power
-
-    return integer
-
-
 def calc_montgomery_R(N):
     """
     Source: OpenSSL 0.9.7 BN_MONT_CTX_SET()
       ~/programming/openssl-0.9.7/openssl-0.9.7/crypto/bn/bn_mont.c:314
     """
-    num_bits_in_N = len(sympy_integer_to_bits(N))
+    num_bits_in_N = len(utils.sympy_integer_to_bits(N))
     R = sympy.Integer(2) ** num_bits_in_N
     return R
 
@@ -158,12 +93,12 @@ def bruteforce_most_significant_bits(
 ):
     msb = []
     for i in range(2 ** num_bits):
-        i_bits = sympy_integer_to_bits(i)
+        i_bits = utils.sympy_integer_to_bits(i)
         i_bits = [0] * (num_bits - len(i_bits)) + i_bits
         msb.append(i_bits)
 
     gs = [bits + [0] * (512 - num_bits) for bits in msb]
-    gs = [bits_to_sympy_integer(g) for g in gs]
+    gs = [utils.bits_to_sympy_integer(g) for g in gs]
 
     gs = [g for g in gs if min_point <= g <= max_point]
 
@@ -174,7 +109,7 @@ def sample_ith_bit(q_bits, i, sample_size=7, neighbourhood_size=400):
     num_bits = len(q_bits)
 
     g_low_bits = q_bits[0:i] + [0] + [0] * (num_bits - (i + 1))
-    g_low = bits_to_sympy_integer(g_low_bits)
+    g_low = utils.bits_to_sympy_integer(g_low_bits)
     g_low_samples = sample(
         [g_low],
         sample_size=sample_size,
@@ -187,7 +122,7 @@ def sample_ith_bit(q_bits, i, sample_size=7, neighbourhood_size=400):
     )
 
     g_high_bits = q_bits[0:i] + [1] + [0] * (num_bits - (i + 1))
-    g_high = bits_to_sympy_integer(g_high_bits)
+    g_high = utils.bits_to_sympy_integer(g_high_bits)
     g_high_samples = sample(
         [g_high],
         sample_size=sample_size,
@@ -245,7 +180,7 @@ if __name__ == "__main__":
     elif sys.argv[1] == "recover-bits":
         known_bits = [int(b) for b in sys.argv[2]]
 
-        q_bits = sympy_integer_to_bits(q)
+        q_bits = utils.sympy_integer_to_bits(q)
 
         print("# Checking given bits against q")
         for i in range(0, len(known_bits)):
