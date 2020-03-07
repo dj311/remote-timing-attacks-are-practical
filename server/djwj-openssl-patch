@@ -136,3 +136,20 @@ diff -ruN orig/ssl/t1_enc.c new/ssl/t1_enc.c
  			if (s->options&SSL_OP_TLS_BLOCK_PADDING_BUG)
  				{
  				/* First packet is even in size, so check */
+diff -ruN orig/crypto/rsa/rsa_eay.c new/crypto/rsa/rsa_eay.c
+--- orig/crypto/rsa/rsa_eay.c	2002-11-28 08:08:48.000000000 +0000
++++ new/crypto/rsa/rsa_eay.c	2020-03-07 22:47:58.186184189 +0000
+@@ -318,8 +318,12 @@
+ 
+ 	if ((rsa->flags & RSA_FLAG_BLINDING) && (rsa->blinding == NULL))
+ 		RSA_blinding_on(rsa,ctx);
+-	if (rsa->flags & RSA_FLAG_BLINDING)
++	if (rsa->flags & RSA_FLAG_BLINDING) {
++		printf("djwj: blinding=on\n");
+ 		if (!BN_BLINDING_convert(&f,rsa->blinding,ctx)) goto err;
++	} else {
++		printf("djwj: blinding=off\n");
++	}
+ 
+ 	/* do the decrypt */
+ 	if ( (rsa->flags & RSA_FLAG_EXT_PKEY) ||
