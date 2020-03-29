@@ -10,6 +10,8 @@ To get this to work in practice, we need a way to send a variety of `g` values t
 
 There's quite a bit more to this attack than Ive explained here, but thats a high-level overview of the core parts. The papers explanations are clearer than what I've written above, and relatively short. It's definitely worth a read.
 
+If you've read it and aren't 100% sure what they mean by zero-one gap, take a look at [slide 7 in this presentation](https://www.cs.jhu.edu/~fabian/courses/CS600.624/slides/week1.pdf#page=7) from Johns Hopkins' "Selected Topics in Network Security (Spring 05)" course. It helped clear things up for me.
+
 ## Practice
 This project consists of two key components:
   1. Server :: Runs the vulnerable Apache server on port 443.
